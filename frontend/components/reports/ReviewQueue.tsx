@@ -6,6 +6,7 @@ import {
   ChartBarIcon,
   ClipboardDocumentCheckIcon,
   ClipboardDocumentListIcon,
+  DocumentTextIcon,
   PhotoIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
@@ -131,6 +132,11 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
       href: `/${locale}/actions`,
       label: t("review.nav.actions"),
       icon: <WrenchScrewdriverIcon className="h-5 w-5" />,
+    },
+    {
+      href: `/${locale}/documents`,
+      label: t("review.nav.documents"),
+      icon: <DocumentTextIcon className="h-5 w-5" />,
     },
     {
       href: `/${locale}/briefings`,

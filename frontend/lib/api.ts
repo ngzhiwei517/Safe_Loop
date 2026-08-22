@@ -10,13 +10,14 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, accessToken: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  if (!(init?.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/backend"}${path}`, {
     ...init,
-    headers: {
-      ...init?.headers,
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     cache: "no-store",
   });
   if (!response.ok) {

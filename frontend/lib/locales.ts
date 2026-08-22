@@ -15,6 +15,10 @@ export function formatDateTime(value: Date | string, locale: Locale): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: siteTimeZone }).format(new Date(value));
 }
 
+export function formatDate(value: Date | string, locale: Locale): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: siteTimeZone }).format(new Date(value));
+}
+
 export function formatNumber(value: number, locale: Locale): string { return new Intl.NumberFormat(locale).format(value); }
 
 export function formatRelativeAge(
