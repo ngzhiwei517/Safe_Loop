@@ -15,3 +15,9 @@
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: Arial, sans-serif; }
+html { scrollbar-width: none; }
+html::-webkit-scrollbar { display: none; }
+input[type="checkbox"] { appearance: none; width: 52px; height: 30px; border: 1px solid var(--border); border-radius: var(--r-chip); background: var(--surface-sunken); padding: 3px; transition: background .2s; }
+input[type="checkbox"]::before { content: ""; display: block; width: 22px; height: 22px; border-radius: var(--r-chip); background: var(--surface); box-shadow: var(--shadow); transition: transform .2s; }
+input[type="checkbox"]:checked { background: var(--primary); }
+input[type="checkbox"]:checked::before { transform: translateX(22px); }

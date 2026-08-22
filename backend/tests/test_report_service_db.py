@@ -11,7 +11,7 @@ import asyncpg
 import pytest
 
 from app.db import close_pool, connection, init_pool
-from app.domain.enums import ActorType, ReportStatus, Role
+from app.domain.enums import ActorType, InputMode, ReportStatus, Role
 from app.domain.transitions import TransitionError
 from app.services.report_service import Actor, create_report, transition_report
 
@@ -69,6 +69,41 @@ def test_create_report_writes_audit_and_human_ref() -> None:
         human_ref, audit_count = run(check())
         assert human_ref.startswith("SL-")
         assert audit_count == 1
+    finally:
+        run(cleanup(report_id))
+
+
+def test_file_report_contract_persists_fields_and_two_audits() -> None:
+    report_id = run(create_report(
+        REPORTER_ID,
+        "Loose edge protection",
+        lang_original="en",
+        location_text="Level 6",
+        activity="Material delivery",
+        level_or_zone="East loading area",
+        grid_ref="E6",
+        is_confidential=True,
+        input_mode=InputMode.TYPED,
+    ))
+    try:
+        run(transition_report(
+            report_id,
+            ReportStatus.SUBMITTED,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+        ))
+
+        async def check() -> tuple[str, str, str, bool, int]:
+            async with connection() as conn:
+                return await conn.fetchrow(
+                    """
+                    select status::text, input_mode::text, grid_ref, is_confidential,
+                           (select count(*) from audit_log where report_id = $1)
+                    from reports where id = $1
+                    """,
+                    report_id,
+                )
+
+        assert run(check()) == ("submitted", "typed", "E6", True, 2)
     finally:
         run(cleanup(report_id))
 

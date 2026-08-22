@@ -10,7 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from app.api.deps import current_actor
-from app.domain.enums import ReportStatus
+from app.domain.enums import InputMode, ReportStatus
 from app.domain.transitions import TransitionError, allowed_targets
 from app.services.report_service import Actor, create_report, get_report, get_timeline, transition_report
 
@@ -25,7 +25,10 @@ class CreateReportRequest(BaseModel):
     urgency: str = "medium"
     location_text: str | None = None
     activity: str | None = None
+    level_or_zone: str | None = None
+    grid_ref: str | None = None
     is_confidential: bool = False
+    input_mode: InputMode = InputMode.TYPED
 
 
 class TransitionRequest(BaseModel):
@@ -65,7 +68,10 @@ async def post_report(payload: CreateReportRequest, actor: Actor = Depends(curre
         urgency=payload.urgency,
         location_text=payload.location_text,
         activity=payload.activity,
+        level_or_zone=payload.level_or_zone,
+        grid_ref=payload.grid_ref,
         is_confidential=payload.is_confidential,
+        input_mode=payload.input_mode,
     )
     return {"id": report_id}
 

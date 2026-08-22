@@ -3,57 +3,72 @@ export const stateMachine = [] as const;
 export type StateMachineTransition = (typeof stateMachine)[number];
 export const reportStatuses = ["action_assigned","action_submitted","ai_drafted","clarifying","draft","escalated","info_requested","lesson_drafted","lesson_published","rejected","submitted","under_review","verified_closed"] as const;
 export type ReportStatus = (typeof reportStatuses)[number];
+export const reportStatus = {
+  "action_assigned": "action_assigned",
+  "action_submitted": "action_submitted",
+  "ai_drafted": "ai_drafted",
+  "clarifying": "clarifying",
+  "draft": "draft",
+  "escalated": "escalated",
+  "info_requested": "info_requested",
+  "lesson_drafted": "lesson_drafted",
+  "lesson_published": "lesson_published",
+  "rejected": "rejected",
+  "submitted": "submitted",
+  "under_review": "under_review",
+  "verified_closed": "verified_closed"
+} as const;
 export const statusColourMap: Record<ReportStatus, readonly [string, string]> = {
   "action_assigned": [
-    "success",
-    "successStrong"
+    "success-tint",
+    "success-strong"
   ],
   "action_submitted": [
-    "success",
-    "successStrong"
+    "success-tint",
+    "success-strong"
   ],
   "ai_drafted": [
-    "primaryTint",
-    "primaryStrong"
+    "primary-tint",
+    "primary-strong"
   ],
   "clarifying": [
-    "primaryTint",
-    "primaryStrong"
+    "primary-tint",
+    "primary-strong"
   ],
   "draft": [
-    "surfaceSunken",
-    "inkMuted"
+    "surface-sunken",
+    "ink-muted"
   ],
   "escalated": [
     "danger",
     "danger"
   ],
   "info_requested": [
-    "warning",
+    "warning-tint",
     "warning"
   ],
   "lesson_drafted": [
-    "surfaceSunken",
-    "inkMuted"
+    "surface-sunken",
+    "ink-muted"
   ],
   "lesson_published": [
-    "success",
-    "successStrong"
+    "success-tint",
+    "success-strong"
   ],
   "rejected": [
-    "surfaceSunken",
-    "inkMuted"
+    "surface-sunken",
+    "ink-muted"
   ],
   "submitted": [
-    "primaryTint",
-    "primaryStrong"
+    "primary-tint",
+    "primary-strong"
   ],
   "under_review": [
-    "warning",
+    "warning-tint",
     "warning"
   ],
   "verified_closed": [
-    "success",
-    "successStrong"
+    "success-tint",
+    "success-strong"
   ]
 };

@@ -10,7 +10,7 @@ from uuid import UUID
 import asyncpg
 
 from app.db import connection
-from app.domain.enums import ActorType, ReportStatus, Role
+from app.domain.enums import ActorType, InputMode, ReportStatus, Role
 from app.domain.transitions import TransitionError, assert_can
 
 
@@ -41,7 +41,10 @@ async def create_report(
     urgency: str = "medium",
     location_text: str | None = None,
     activity: str | None = None,
+    level_or_zone: str | None = None,
+    grid_ref: str | None = None,
     is_confidential: bool = False,
+    input_mode: InputMode = InputMode.TYPED,
 ) -> UUID:
     """Create a draft; the database trigger assigns its human reference."""
     async with connection() as conn:
@@ -50,9 +53,10 @@ async def create_report(
                 """
                 INSERT INTO reports (
                   reporter_id, description_original, lang_original, urgency,
-                  location_text, activity, is_confidential
+                  location_text, activity, level_or_zone, grid_ref,
+                  is_confidential, input_mode
                 )
-                VALUES ($1, $2, $3, $4::urgency, $5, $6, $7)
+                VALUES ($1, $2, $3, $4::urgency, $5, $6, $7, $8, $9, $10::input_mode)
                 RETURNING id
                 """,
                 reporter_id,
@@ -61,7 +65,10 @@ async def create_report(
                 urgency,
                 location_text,
                 activity,
+                level_or_zone,
+                grid_ref,
                 is_confidential,
+                input_mode.value,
             )
             await conn.execute(
                 """
