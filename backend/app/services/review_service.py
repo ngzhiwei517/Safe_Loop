@@ -10,7 +10,14 @@ from uuid import UUID
 import asyncpg
 
 from app.db import connection
-from app.domain.enums import CaseRole, ReportStatus, ReviewDecision, Urgency
+from app.domain.enums import (
+    ActorType,
+    CaseRole,
+    ReportStatus,
+    ReviewDecision,
+    Role,
+    Urgency,
+)
 from app.services.notification_service import NotificationEntity, send_notification
 from app.services.report_service import Actor, transition_report
 
@@ -63,14 +70,26 @@ async def review_report(
     corrected_action: str | None = None,
     correction_reason: str | None = None,
     assignee_id: UUID | None = None,
+    case_role: CaseRole = CaseRole.RESPONSIBLE,
     due_at: datetime | None = None,
 ) -> ReviewResult:
     """Commit review evidence and its state-machine edge as one unit."""
     expected_target = _DECISION_TARGETS[decision]
     if target is not expected_target:
         raise ReviewError("review_target_mismatch", "review decision does not match target")
-    if actor.profile_id is None:
+    if (
+        actor.actor_type is not ActorType.HUMAN
+        or actor.profile_id is None
+        or actor.role is not Role.REVIEWER
+    ):
         raise ReviewError("review_actor_not_permitted", "review requires a human profile")
+    if target is ReportStatus.ACTION_ASSIGNED and (
+        assignee_id is None or due_at is None
+    ):
+        raise ReviewError(
+            "assignment_required",
+            "approval requires an assignee, due date, and action",
+        )
 
     category = _clean_optional(corrected_category, "category")
     action = _clean_optional(corrected_action, "action")
@@ -159,7 +178,7 @@ async def review_report(
                         """,
                         report_id,
                         assignee_id,
-                        CaseRole.RESPONSIBLE.value,
+                        case_role.value,
                         due_at,
                     )
                     corrective_action_id = await conn.fetchval(

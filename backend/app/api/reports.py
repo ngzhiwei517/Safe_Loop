@@ -12,7 +12,15 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from app.api.deps import current_actor
-from app.domain.enums import InputMode, MediaPhase, ReportStatus, ReviewDecision, Urgency
+from app.domain.enums import (
+    CaseRole,
+    InputMode,
+    MediaPhase,
+    ReportStatus,
+    ReviewDecision,
+    Role,
+    Urgency,
+)
 from app.domain.transitions import TransitionError, allowed_targets, find
 from app.services.media_service import (
     MediaError,
@@ -85,6 +93,14 @@ class ReviewRequest(BaseModel):
     corrected_action: str | None = Field(default=None, max_length=4000)
     correction_reason: str | None = Field(default=None, max_length=2000)
     assignee_id: UUID | None = None
+    due_at: datetime | None = None
+
+
+class AssignmentRequest(BaseModel):
+    """Approve the current action while naming its responsible owner."""
+
+    assignee_id: UUID | None = None
+    case_role: CaseRole
     due_at: datetime | None = None
 
 
@@ -171,11 +187,35 @@ def report_list_error(error: ReportListError) -> HTTPException:
         "report_list_forbidden": status.HTTP_403_FORBIDDEN,
         "invalid_cursor": status.HTTP_422_UNPROCESSABLE_ENTITY,
         "invalid_page_size": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "invalid_assignee": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "assignee_me_forbidden": status.HTTP_403_FORBIDDEN,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
         {"code": error.code, "message": error.message},
     )
+
+
+def _resolve_assignee_filter(
+    assignee: str | UUID | None,
+    actor: Actor,
+) -> UUID | None:
+    if assignee is None or isinstance(assignee, UUID):
+        return assignee
+    if assignee == "me":
+        if actor.role is not Role.RESPONSIBLE or actor.profile_id is None:
+            raise ReportListError(
+                "assignee_me_forbidden",
+                "assignee me filter requires a responsible profile",
+            )
+        return actor.profile_id
+    try:
+        return UUID(assignee)
+    except ValueError as error:
+        raise ReportListError(
+            "invalid_assignee",
+            "assignee filter must be a profile id or me",
+        ) from error
 
 
 def report_draft_error(error: ReportDraftError) -> HTTPException:
@@ -213,7 +253,7 @@ def clarification_error(error: ClarificationError) -> HTTPException:
 async def report_list(
     report_status: ReportStatus | None = Query(default=None, alias="status"),
     urgency: Urgency | None = Query(default=None),
-    assignee_id: UUID | None = Query(default=None, alias="assignee"),
+    assignee_id: str | UUID | None = Query(default=None, alias="assignee"),
     needs_manual_triage: bool = Query(default=False),
     q: str | None = Query(default=None, max_length=200),
     cursor: str | None = Query(default=None, max_length=1000),
@@ -222,11 +262,12 @@ async def report_list(
 ) -> dict[str, object]:
     """Return one role-scoped queue page and its opaque continuation cursor."""
     try:
+        resolved_assignee_id = _resolve_assignee_filter(assignee_id, actor)
         page = await list_reports(
             actor,
             report_status=report_status,
             urgency=urgency,
-            assignee_id=assignee_id,
+            assignee_id=resolved_assignee_id,
             needs_manual_triage=needs_manual_triage,
             query=q,
             cursor=cursor,
@@ -362,6 +403,41 @@ async def post_report_media(
     except MediaError as error:
         raise media_error(error) from error
     return cast(dict[str, object], jsonable_encoder(dict(media)))
+
+
+@router.post("/{report_id}/assignments", status_code=status.HTTP_201_CREATED)
+async def post_assignment(
+    report_id: UUID,
+    payload: AssignmentRequest,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Approve and assign through the existing all-or-nothing review transaction."""
+    try:
+        result = await review_report(
+            report_id,
+            actor,
+            decision=ReviewDecision.APPROVE,
+            target=ReportStatus.ACTION_ASSIGNED,
+            assignee_id=payload.assignee_id,
+            case_role=payload.case_role,
+            due_at=payload.due_at,
+        )
+    except ReviewError as error:
+        raise review_error(error) from error
+    except TransitionError as error:
+        raise transition_error(error) from error
+    return cast(
+        dict[str, object],
+        jsonable_encoder(
+            {
+                "review_id": result.review["id"],
+                "report_id": result.report["id"],
+                "status": result.report["status"],
+                "assignment_id": result.assignment_id,
+                "corrective_action_id": result.corrective_action_id,
+            }
+        ),
+    )
 
 
 @router.post("/{report_id}/review")

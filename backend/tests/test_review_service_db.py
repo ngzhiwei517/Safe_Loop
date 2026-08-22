@@ -10,6 +10,7 @@ import os
 from typing import Any, TypeVar
 from uuid import UUID, uuid4
 
+import asyncpg
 import pytest
 
 from app.api.reports import review_error
@@ -137,6 +138,32 @@ def test_correction_without_reason_is_clean_422_and_rolls_back() -> None:
         run(cleanup(report_id))
 
 
+def test_approval_without_assignee_is_a_clear_422_and_rolls_back() -> None:
+    report_id = run(make_report())
+    try:
+        run(move_to_review(report_id))
+        with pytest.raises(ReviewError) as error:
+            run(
+                review_report(
+                    report_id,
+                    Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+                    decision=ReviewDecision.APPROVE,
+                    target=ReportStatus.ACTION_ASSIGNED,
+                    corrected_action="Install secured guardrails.",
+                    correction_reason="Reviewer approved the required action.",
+                    due_at=datetime.now(timezone.utc) + timedelta(days=1),
+                )
+            )
+
+        assert error.value.code == "assignment_required"
+        http_error = review_error(error.value)
+        assert http_error.status_code == 422
+        assert http_error.detail["code"] == "assignment_required"
+        assert run(review_state(report_id)) == ("under_review", 0, 0, 0, 4)
+    finally:
+        run(cleanup(report_id))
+
+
 def test_approval_creates_assignment_action_decision_and_transition() -> None:
     report_id = run(make_report())
     try:
@@ -160,11 +187,12 @@ def test_approval_creates_assignment_action_decision_and_transition() -> None:
         assert result.corrective_action_id is not None
         assert run(review_state(report_id)) == ("action_assigned", 1, 1, 1, 5)
 
-        async def read_atomic_rows() -> tuple[object, str, UUID, datetime]:
+        async def read_atomic_rows() -> tuple[object, str, int, UUID, str, datetime]:
             async with connection() as conn:
                 return await conn.fetchrow(
                     """
-                    select d.corrections, a.action_text, ra.assignee_id, ra.due_at
+                    select d.corrections, a.action_text, a.rework_count,
+                           ra.assignee_id, ra.case_role::text, ra.due_at
                     from review_decisions d
                     join reports r on r.id = d.report_id
                     join report_assignments ra on ra.report_id = r.id and ra.active
@@ -174,13 +202,22 @@ def test_approval_creates_assignment_action_decision_and_transition() -> None:
                     report_id,
                 )
 
-        corrections, action_text, assignee_id, stored_due_at = run(read_atomic_rows())
+        (
+            corrections,
+            action_text,
+            rework_count,
+            assignee_id,
+            case_role,
+            stored_due_at,
+        ) = run(read_atomic_rows())
         assert json.loads(corrections)["action"] == {
             "before": None,
             "after": "Install secured guardrails before work resumes.",
         }
         assert action_text == "Install secured guardrails before work resumes."
+        assert rework_count == 0
         assert assignee_id == RESPONSIBLE_ID
+        assert case_role == "responsible"
         assert stored_due_at == due_at
 
         async def read_notification() -> tuple[str, UUID]:
@@ -197,6 +234,43 @@ def test_approval_creates_assignment_action_decision_and_transition() -> None:
                 return row["kind"], row["recipient_id"]
 
         assert run(read_notification()) == ("assigned", RESPONSIBLE_ID)
+    finally:
+        run(cleanup(report_id))
+
+
+def test_partial_unique_index_refuses_two_active_responsible_assignments() -> None:
+    report_id = run(make_report())
+    due_at = datetime.now(timezone.utc) + timedelta(days=2)
+
+    async def insert_duplicates() -> None:
+        async with connection() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    insert into report_assignments (
+                      report_id, assignee_id, case_role, due_at
+                    )
+                    values ($1, $2, 'responsible'::case_role, $3)
+                    """,
+                    report_id,
+                    RESPONSIBLE_ID,
+                    due_at,
+                )
+                await conn.execute(
+                    """
+                    insert into report_assignments (
+                      report_id, assignee_id, case_role, due_at
+                    )
+                    values ($1, $2, 'responsible'::case_role, $3)
+                    """,
+                    report_id,
+                    RESPONSIBLE_ID,
+                    due_at,
+                )
+
+    try:
+        with pytest.raises(asyncpg.UniqueViolationError):
+            run(insert_duplicates())
     finally:
         run(cleanup(report_id))
 

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import AsyncIterator
 from uuid import UUID
 
+from fastapi import HTTPException
 import pytest
 
 from app.api import reports as reports_api
@@ -131,6 +132,57 @@ def test_reviewer_filters_include_status_urgency_assignee_and_literal_search(
     assert "r.urgency =" in fake.query
     assert "filtered_assignment.assignee_id =" in fake.query
     assert "%100\\%\\_safe%" in fake.arguments
+
+
+def test_assignee_me_resolves_to_the_responsible_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_list(*_: object, **values: object) -> ReportPage:
+        captured.update(values)
+        return ReportPage([], None)
+
+    async def fake_sign(_: list[str]) -> tuple[dict[str, str], datetime]:
+        return {}, datetime(2026, 8, 22, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(reports_api, "list_reports", fake_list)
+    monkeypatch.setattr(reports_api, "get_signed_media_urls", fake_sign)
+    actor = Actor(ActorType.HUMAN, RESPONSIBLE_ID, Role.RESPONSIBLE)
+
+    asyncio.run(
+        reports_api.report_list(
+            report_status=None,
+            urgency=None,
+            assignee_id="me",
+            needs_manual_triage=False,
+            q=None,
+            cursor=None,
+            limit=25,
+            actor=actor,
+        )
+    )
+
+    assert captured["assignee_id"] == RESPONSIBLE_ID
+
+
+def test_assignee_me_is_rejected_for_a_non_responsible_role() -> None:
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            reports_api.report_list(
+                report_status=None,
+                urgency=None,
+                assignee_id="me",
+                needs_manual_triage=False,
+                q=None,
+                cursor=None,
+                limit=25,
+                actor=Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+            )
+        )
+
+    assert error.value.status_code == 403
+    assert error.value.detail["code"] == "assignee_me_forbidden"
 
 
 def test_manual_triage_filter_uses_only_the_latest_invalid_draft(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from uuid import UUID
@@ -11,16 +12,17 @@ from fastapi import BackgroundTasks, HTTPException
 import pytest
 
 from app.api import reports as reports_api
-from app.api.reports import ReviewRequest, TransitionRequest
-from app.domain.enums import ActorType, ReportStatus, ReviewDecision, Role
+from app.api.reports import AssignmentRequest, ReviewRequest, TransitionRequest
+from app.domain.enums import ActorType, CaseRole, ReportStatus, ReviewDecision, Role
 from app.domain.transitions import TRANSITIONS
 from app.services.report_service import Actor
-from app.services.review_service import ReviewResult
+from app.services.review_service import ReviewError, ReviewResult, review_report
 
 REPORT_ID = UUID("10000000-0000-0000-0000-000000000001")
 REPORTER_ID = UUID("00000000-0000-0000-0000-000000000001")
 OTHER_REPORTER_ID = UUID("00000000-0000-0000-0000-000000000002")
 REVIEWER_ID = UUID("00000000-0000-0000-0000-000000000003")
+RESPONSIBLE_ID = UUID("00000000-0000-0000-0000-000000000004")
 
 
 def configure_report_read(
@@ -182,6 +184,89 @@ def test_review_endpoint_passes_the_atomic_payload_to_the_service(
     assert captured["reason"] == "Confirm the exclusion zone."
     assert captured["corrected_category"] == "edge protection"
     assert captured["correction_reason"] == "Category was too broad."
+
+
+def test_assignment_endpoint_approves_and_assigns_in_one_service_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    assignment_id = UUID("40000000-0000-0000-0000-000000000001")
+    action_id = UUID("50000000-0000-0000-0000-000000000001")
+
+    async def fake_review(report_id: UUID, actor: Actor, **values: object) -> ReviewResult:
+        captured.update({"report_id": report_id, "actor": actor, **values})
+        return ReviewResult(
+            review={"id": UUID("20000000-0000-0000-0000-000000000002")},  # type: ignore[arg-type]
+            report={"id": report_id, "status": "action_assigned"},  # type: ignore[arg-type]
+            assignment_id=assignment_id,
+            corrective_action_id=action_id,
+        )
+
+    monkeypatch.setattr(reports_api, "review_report", fake_review)
+    actor = Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER)
+    due_at = datetime(2026, 8, 30, 9, 0, tzinfo=timezone.utc)
+
+    result = asyncio.run(
+        reports_api.post_assignment(
+            REPORT_ID,
+            AssignmentRequest(
+                assignee_id=RESPONSIBLE_ID,
+                case_role=CaseRole.RESPONSIBLE,
+                due_at=due_at,
+            ),
+            actor,
+        )
+    )
+
+    assert result["status"] == "action_assigned"
+    assert result["assignment_id"] == str(assignment_id)
+    assert result["corrective_action_id"] == str(action_id)
+    assert captured == {
+        "report_id": REPORT_ID,
+        "actor": actor,
+        "decision": ReviewDecision.APPROVE,
+        "target": ReportStatus.ACTION_ASSIGNED,
+        "assignee_id": RESPONSIBLE_ID,
+        "case_role": CaseRole.RESPONSIBLE,
+        "due_at": due_at,
+    }
+
+
+def test_assignment_service_rejects_a_non_reviewer_before_database_access() -> None:
+    with pytest.raises(ReviewError) as error:
+        asyncio.run(
+            review_report(
+                REPORT_ID,
+                Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+                decision=ReviewDecision.APPROVE,
+                target=ReportStatus.ACTION_ASSIGNED,
+                assignee_id=RESPONSIBLE_ID,
+                case_role=CaseRole.RESPONSIBLE,
+                due_at=datetime(2026, 8, 30, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+
+    assert error.value.code == "review_actor_not_permitted"
+
+
+def test_approval_without_assignee_returns_the_machine_422_contract() -> None:
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            reports_api.post_assignment(
+                REPORT_ID,
+                AssignmentRequest(
+                    case_role=CaseRole.RESPONSIBLE,
+                    due_at=datetime(2026, 8, 30, 9, 0, tzinfo=timezone.utc),
+                ),
+                Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+            )
+        )
+
+    assert error.value.status_code == 422
+    assert error.value.detail == {
+        "code": "assignment_required",
+        "message": "approval requires an assignee, due date, and action",
+    }
 
 
 def test_timeline_read_uses_the_same_report_authorisation(
