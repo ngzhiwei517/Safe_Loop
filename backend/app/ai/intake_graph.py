@@ -40,6 +40,7 @@ class DraftPayload(TypedDict):
     suggested_action: str | None
     confidence: float
     needs_escalation: bool
+    escalation_reason: str | None
     citations: list[dict[str, str]]
 
 
@@ -330,6 +331,7 @@ class DraftResult(BaseModel):
     suggested_action: str | None
     confidence: float = Field(ge=0.0, le=1.0)
     needs_escalation: bool
+    escalation_reason: str | None
     citations: list[dict[str, str]] = Field(max_length=0)
 
     @classmethod
@@ -365,6 +367,11 @@ class DraftResult(BaseModel):
             "suggested_action": None,
             "confidence": 0.9 if not missing_information else 0.65,
             "needs_escalation": needs_escalation,
+            "escalation_reason": (
+                "Description contains an immediate escalation marker."
+                if needs_escalation
+                else None
+            ),
             "citations": [],
         }
 
@@ -417,6 +424,7 @@ def _result_draft(data: dict[str, JsonValue]) -> DraftPayload:
         "suggested_action": result.suggested_action,
         "confidence": result.confidence,
         "needs_escalation": result.needs_escalation,
+        "escalation_reason": result.escalation_reason,
         "citations": result.citations,
     }
 

@@ -33,6 +33,16 @@ def test_only_human_can_close(actor_type: ActorType) -> None:
     assert error.value.code == "actor_not_permitted"
 
 
+def test_ai_cannot_queue_a_draft_for_review() -> None:
+    with pytest.raises(TransitionError) as error:
+        assert_can(
+            ReportStatus.AI_DRAFTED,
+            ReportStatus.UNDER_REVIEW,
+            ActorType.AI,
+        )
+    assert error.value.code == "actor_not_permitted"
+
+
 @pytest.mark.parametrize("status", sorted(TERMINAL_STATUSES, key=lambda value: value.value))
 def test_terminal_statuses_have_no_outgoing_moves(status: ReportStatus) -> None:
     with pytest.raises(TransitionError) as error:

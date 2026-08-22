@@ -54,6 +54,7 @@ def envelope(provider_ref: str, *, latency_ms: int) -> DraftEnvelope:
         "suggested_action": None,
         "confidence": 0.9,
         "needs_escalation": False,
+        "escalation_reason": None,
         "citations": [],
     }
     return {
@@ -86,11 +87,12 @@ def test_two_runs_append_versions_one_and_two() -> None:
         assert first["version"] == 1
         assert second["version"] == 2
 
-        async def read() -> list[tuple[int, str, str, int, int, int]]:
+        async def read() -> list[tuple[int, str, str, str, object, int, int, int]]:
             async with connection() as conn:
                 rows = await conn.fetch(
                     """
                     select version, provider_ref, raw_json::text,
+                           validation::text, validation_errors,
                            latency_ms, tokens_in, tokens_out
                     from ai_drafts
                     where report_id = $1
@@ -103,6 +105,8 @@ def test_two_runs_append_versions_one_and_two() -> None:
                         row["version"],
                         row["provider_ref"],
                         row["raw_json"],
+                        row["validation"],
+                        row["validation_errors"],
                         row["latency_ms"],
                         row["tokens_in"],
                         row["tokens_out"],
@@ -126,10 +130,15 @@ def test_two_runs_append_versions_one_and_two() -> None:
                 "suggested_action",
                 "confidence",
                 "needs_escalation",
+                "escalation_reason",
                 "citations",
             )
         }
-        assert rows[0][3:] == (7, 21, 34)
-        assert rows[1][3:] == (9, 21, 34)
+        assert rows[0][3] == "valid"
+        assert json.loads(rows[0][4]) == []
+        assert rows[1][3] == "valid"
+        assert json.loads(rows[1][4]) == []
+        assert rows[0][5:] == (7, 21, 34)
+        assert rows[1][5:] == (9, 21, 34)
     finally:
         run(cleanup(report_id))

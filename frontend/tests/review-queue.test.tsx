@@ -88,7 +88,13 @@ describe("ReviewQueue", () => {
         .getAttribute("href"),
     ).toBe(`/${defaultLocale}/review/${queueItem.id}`);
     expect(listReports).toHaveBeenCalledWith(
-      { status: reportStatus.under_review, urgency: undefined, q: undefined, cursor: undefined },
+      {
+        status: reportStatus.under_review,
+        urgency: undefined,
+        needsManualTriage: false,
+        q: undefined,
+        cursor: undefined,
+      },
       "test-token",
     );
   });
@@ -104,7 +110,13 @@ describe("ReviewQueue", () => {
 
     await waitFor(() =>
       expect(listReports).toHaveBeenLastCalledWith(
-        { status: reportStatus.submitted, urgency: undefined, q: undefined, cursor: undefined },
+        {
+          status: reportStatus.submitted,
+          urgency: undefined,
+          needsManualTriage: false,
+          q: undefined,
+          cursor: undefined,
+        },
         "test-token",
       ),
     );
@@ -127,6 +139,7 @@ describe("ReviewQueue", () => {
       {
         status: reportStatus.under_review,
         urgency: undefined,
+        needsManualTriage: false,
         q: undefined,
         cursor: "opaque-next",
       },
@@ -140,5 +153,29 @@ describe("ReviewQueue", () => {
     expect(await screen.findByText(zh["review.queue.title"])).toBeTruthy();
     expect(screen.getAllByText(zh["status.under_review"])).toHaveLength(2);
     expect(screen.getAllByText(zh["urgency.critical"])).toHaveLength(2);
+  });
+
+  it("requests the reviewer-only manual triage queue", async () => {
+    renderQueue();
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: en["review.queue.manualTriage"],
+      }),
+    );
+
+    await waitFor(() =>
+      expect(listReports).toHaveBeenLastCalledWith(
+        {
+          status: undefined,
+          urgency: undefined,
+          needsManualTriage: true,
+          q: undefined,
+          cursor: undefined,
+        },
+        "test-token",
+      ),
+    );
   });
 });

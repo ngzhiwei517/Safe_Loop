@@ -127,6 +127,7 @@ async def list_reports(
     report_status: ReportStatus | None = None,
     urgency: Urgency | None = None,
     assignee_id: UUID | None = None,
+    needs_manual_triage: bool = False,
     query: str | None = None,
     cursor: str | None = None,
     limit: int = 25,
@@ -141,6 +142,11 @@ async def list_reports(
         raise ReportListError("report_list_forbidden", "actor cannot list reports")
     if not 1 <= limit <= 100:
         raise ReportListError("invalid_page_size", "report list page size is invalid")
+    if needs_manual_triage and actor.role not in {Role.REVIEWER, Role.ADMIN}:
+        raise ReportListError(
+            "report_list_forbidden",
+            "manual triage is available only to reviewers and administrators",
+        )
 
     values: list[object] = []
 
@@ -169,6 +175,16 @@ async def list_reports(
             "exists (select 1 from report_assignments filtered_assignment "
             f"where filtered_assignment.report_id = r.id and filtered_assignment.active "
             f"and filtered_assignment.assignee_id = {assignee_parameter})"
+        )
+    if needs_manual_triage:
+        clauses.append(
+            "r.status = 'ai_drafted'::report_status and exists ("
+            "select 1 from ai_drafts manual_triage_draft "
+            "where manual_triage_draft.report_id = r.id "
+            "and manual_triage_draft.validation = 'invalid'::validation_status "
+            "and manual_triage_draft.version = ("
+            "select max(latest_draft.version) from ai_drafts latest_draft "
+            "where latest_draft.report_id = r.id))"
         )
 
     normalized_query = query.strip() if query else ""

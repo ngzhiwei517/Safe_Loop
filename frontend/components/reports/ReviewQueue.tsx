@@ -62,6 +62,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
     reportStatus.under_review,
   );
   const [urgencyFilter, setUrgencyFilter] = useState<Urgency | "">("");
+  const [needsManualTriage, setNeedsManualTriage] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [items, setItems] = useState<ReportListItem[]>([]);
@@ -84,6 +85,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
           {
             status: statusFilter || undefined,
             urgency: urgencyFilter || undefined,
+            needsManualTriage,
             q: searchQuery || undefined,
             cursor,
           },
@@ -97,7 +99,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
         append ? setLoadingMore(false) : setLoading(false);
       }
     },
-    [searchQuery, statusFilter, urgencyFilter],
+    [needsManualTriage, searchQuery, statusFilter, urgencyFilter],
   );
 
   useEffect(() => {
@@ -163,7 +165,10 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
             <select
               className="mt-1 min-h-11 w-full rounded-control border border-border bg-surface px-3 text-base text-ink outline-none focus:border-primaryStrong focus:ring-2 focus:ring-primaryTint"
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as ReportStatus | "")}
+              onChange={(event) => {
+                setStatusFilter(event.target.value as ReportStatus | "");
+                setNeedsManualTriage(false);
+              }}
             >
               <option value="">{t("review.queue.allStatuses")}</option>
               {reportStatuses.map((status) => (
@@ -195,6 +200,20 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
           />
           <SecondaryButton className="w-auto min-w-24" label={t("review.queue.search")} type="submit" />
         </form>
+
+        <label className="flex min-h-11 items-center gap-3 rounded-control border border-border bg-surface px-3 text-base font-bold text-ink">
+          <input
+            checked={needsManualTriage}
+            className="h-5 w-5 accent-primaryStrong"
+            onChange={(event) => {
+              const checked = event.target.checked;
+              setNeedsManualTriage(checked);
+              if (checked) setStatusFilter("");
+            }}
+            type="checkbox"
+          />
+          <span>{t("review.queue.manualTriage")}</span>
+        </label>
 
         {loadFailed && (
           <Banner

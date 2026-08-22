@@ -88,6 +88,13 @@ class InputMode(StrEnum):
     VOICE_EDITED = "voice_edited"
 
 
+class ValidationStatus(StrEnum):
+    """Result of the deterministic safety gate applied to an AI draft."""
+
+    VALID = "valid"
+    INVALID = "invalid"
+
+
 AI_FORBIDDEN_STATUSES = frozenset(
     {
         ReportStatus.UNDER_REVIEW,

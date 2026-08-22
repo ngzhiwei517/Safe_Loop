@@ -123,27 +123,44 @@ def test_complete_submitted_report_drafts_without_clarification() -> None:
     try:
         assert run(run_intake(report_id)) is True
 
-        async def read() -> tuple[str, int, str, int]:
+        async def read() -> tuple[str, int, str, int, str, object]:
             async with connection() as conn:
                 row = await conn.fetchrow(
                     """
                     select status::text,
                       (select count(*) from clarifications where report_id = $1),
-                      (select event from audit_log where report_id = $1
-                       order by created_at desc, id desc limit 1),
-                      (select count(*) from ai_drafts where report_id = $1)
+                      (select count(*) from audit_log where report_id = $1
+                       and event = 'queue_for_review'),
+                      (select count(*) from ai_drafts where report_id = $1),
+                      (select validation::text from ai_drafts where report_id = $1
+                       order by version desc limit 1),
+                      (select validation_errors from ai_drafts where report_id = $1
+                       order by version desc limit 1)
                     from reports where id = $1
                     """,
                     report_id,
                 )
                 assert row is not None
-                return row[0], row[1], row[2], row[3]
+                return row[0], row[1], row[2], row[3], row[4], row[5]
 
-        assert run(read()) == (
-            "ai_drafted",
+        status_value, clarification_count, queued_count, draft_count, validation, raw_errors = run(
+            read()
+        )
+        errors = json.loads(raw_errors) if isinstance(raw_errors, str) else raw_errors
+        assert (
+            status_value,
+            clarification_count,
+            queued_count,
+            draft_count,
+            validation,
+            errors,
+        ) == (
+            "under_review",
             0,
-            "draft_without_clarification",
             1,
+            1,
+            "valid",
+            [],
         )
     finally:
         run(cleanup(report_id))
@@ -164,25 +181,32 @@ def test_cap_prevents_a_third_round_and_persists_outstanding_gaps() -> None:
         run(set_cap())
         assert run(run_intake(report_id)) is True
 
-        async def read() -> tuple[str, int, object, int]:
+        async def read() -> tuple[str, int, object, int, str, object]:
             async with connection() as conn:
                 row = await conn.fetchrow(
                     """
                     select status::text, clarify_rounds, missing_information,
-                      (select count(*) from clarifications where report_id = $1)
+                      (select count(*) from clarifications where report_id = $1),
+                      (select validation::text from ai_drafts where report_id = $1
+                       order by version desc limit 1),
+                      (select validation_errors from ai_drafts where report_id = $1
+                       order by version desc limit 1)
                     from reports where id = $1
                     """,
                     report_id,
                 )
                 assert row is not None
-                return row[0], row[1], row[2], row[3]
+                return row[0], row[1], row[2], row[3], row[4], row[5]
 
-        status_value, rounds, raw_gaps, question_count = run(read())
+        status_value, rounds, raw_gaps, question_count, validation, raw_errors = run(read())
         gaps = json.loads(raw_gaps) if isinstance(raw_gaps, str) else raw_gaps
+        errors = json.loads(raw_errors) if isinstance(raw_errors, str) else raw_errors
         assert status_value == "ai_drafted"
         assert rounds == 2
         assert gaps == ["hazard_detail", "location", "activity"]
         assert question_count == 0
+        assert validation == "invalid"
+        assert errors == ["confidence_below_threshold"]
     finally:
         run(cleanup(report_id))
 

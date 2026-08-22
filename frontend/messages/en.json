@@ -249,6 +249,7 @@
   "review.queue.photoAlt": "Report photo",
   "review.queue.noPhoto": "No report photo",
   "review.queue.rework": "Rework {count}",
+  "review.queue.manualTriage": "Needs manual triage",
   "review.nav.queue": "Queue",
   "review.nav.actions": "Actions",
   "review.nav.briefings": "Briefings",

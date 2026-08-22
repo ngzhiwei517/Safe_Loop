@@ -19,7 +19,7 @@ from app.ai.intake_graph import (
     intake_graph,
 )
 from app.db import connection
-from app.domain.enums import ActorType, ReportStatus, Role
+from app.domain.enums import ActorType, ReportStatus, Role, ValidationStatus
 from app.services.draft_service import append_draft
 from app.services.report_service import Actor, transition_report
 
@@ -226,7 +226,7 @@ async def _persist_result(
             draft_envelope = result["draft"]
             if draft_envelope is None:
                 raise ValueError("completed intake result must contain a draft")
-            await append_draft(
+            stored_draft = await append_draft(
                 report_id,
                 draft_envelope,
                 transaction_connection=conn,
@@ -237,6 +237,13 @@ async def _persist_result(
                 Actor.ai(),
                 transaction_connection=conn,
             )
+            if stored_draft["validation"] == ValidationStatus.VALID.value:
+                await transition_report(
+                    report_id,
+                    ReportStatus.UNDER_REVIEW,
+                    Actor.system(),
+                    transaction_connection=conn,
+                )
             return True
 
 

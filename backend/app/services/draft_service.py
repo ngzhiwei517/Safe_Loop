@@ -12,6 +12,7 @@ import asyncpg
 from asyncpg.pool import PoolConnectionProxy
 
 from app.ai.intake_graph import DraftEnvelope, DraftPayload
+from app.ai.validator import validate_draft
 from app.db import connection
 
 
@@ -46,6 +47,7 @@ def _draft_payload(envelope: DraftEnvelope) -> DraftPayload:
         "suggested_action": envelope["suggested_action"],
         "confidence": envelope["confidence"],
         "needs_escalation": envelope["needs_escalation"],
+        "escalation_reason": envelope["escalation_reason"],
         "citations": envelope["citations"],
     }
 
@@ -85,6 +87,7 @@ async def append_draft(
 ) -> asyncpg.Record:
     """Allocate the next version while holding the parent report lock."""
     payload = _assert_envelope(envelope)
+    validation, validation_errors = validate_draft(payload)
     async with _draft_connection(transaction_connection) as conn:
         async with conn.transaction():
             locked_report_id = await conn.fetchval(
@@ -112,15 +115,16 @@ async def append_draft(
                   report_id, version, provider, provider_ref, raw_json,
                   observed_facts, assumptions, missing_information,
                   proposed_category, proposed_urgency, suggested_owner_role,
-                  suggested_action, confidence, needs_escalation, citations,
+                  suggested_action, confidence, needs_escalation, escalation_reason,
+                  citations, validation, validation_errors,
                   latency_ms, tokens_in, tokens_out
                 )
                 values (
                   $1, $2, $3, $4, $5::jsonb,
                   $6::jsonb, $7::jsonb, $8::jsonb,
                   $9, $10::urgency, $11::role,
-                  $12, $13, $14, $15::jsonb,
-                  $16, $17, $18
+                  $12, $13, $14, $15, $16::jsonb, $17::validation_status,
+                  $18::jsonb, $19, $20, $21
                 )
                 returning *
                 """,
@@ -138,7 +142,10 @@ async def append_draft(
                 payload["suggested_action"],
                 payload["confidence"],
                 payload["needs_escalation"],
+                payload["escalation_reason"],
                 json.dumps(payload["citations"]),
+                validation.value,
+                json.dumps(validation_errors),
                 envelope["latency_ms"],
                 envelope["tokens_in"],
                 envelope["tokens_out"],

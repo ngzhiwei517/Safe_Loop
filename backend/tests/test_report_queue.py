@@ -133,6 +133,34 @@ def test_reviewer_filters_include_status_urgency_assignee_and_literal_search(
     assert "%100\\%\\_safe%" in fake.arguments
 
 
+def test_manual_triage_filter_uses_only_the_latest_invalid_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = use_fake_connection(monkeypatch, [])
+
+    asyncio.run(
+        list_reports(
+            Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+            needs_manual_triage=True,
+        )
+    )
+
+    assert "r.status = 'ai_drafted'::report_status" in fake.query
+    assert "manual_triage_draft.validation = 'invalid'::validation_status" in fake.query
+    assert "max(latest_draft.version)" in fake.query
+
+
+def test_manual_triage_filter_is_reviewer_scoped() -> None:
+    with pytest.raises(ReportListError) as error:
+        asyncio.run(
+            list_reports(
+                Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+                needs_manual_triage=True,
+            )
+        )
+    assert error.value.code == "report_list_forbidden"
+
+
 def test_crew_and_machine_actors_cannot_list_reports() -> None:
     actors = [
         Actor(ActorType.HUMAN, REPORTER_ID, Role.CREW),

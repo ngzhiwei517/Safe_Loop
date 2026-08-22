@@ -100,6 +100,7 @@ export type ReportListFilters = {
   status?: ReportStatus;
   urgency?: Urgency;
   assignee?: string;
+  needsManualTriage?: boolean;
   q?: string;
   cursor?: string;
   limit?: number;
@@ -160,6 +161,7 @@ export function listReports(filters: ReportListFilters, accessToken: string): Pr
   if (filters.status) params.set("status", filters.status);
   if (filters.urgency) params.set("urgency", filters.urgency);
   if (filters.assignee) params.set("assignee", filters.assignee);
+  if (filters.needsManualTriage) params.set("needs_manual_triage", "true");
   if (filters.q?.trim()) params.set("q", filters.q.trim());
   if (filters.cursor) params.set("cursor", filters.cursor);
   if (filters.limit) params.set("limit", String(filters.limit));

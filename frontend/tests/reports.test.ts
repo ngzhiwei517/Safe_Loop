@@ -103,6 +103,7 @@ describe("fileReport", () => {
         status: reportStatus.under_review,
         urgency: "critical",
         assignee: "00000000-0000-0000-0000-000000000004",
+        needsManualTriage: true,
         q: "Tower A",
         cursor: "opaque-cursor",
         limit: 25,
@@ -111,7 +112,7 @@ describe("fileReport", () => {
     );
 
     expect(apiFetch).toHaveBeenCalledWith(
-      "/reports?status=under_review&urgency=critical&assignee=00000000-0000-0000-0000-000000000004&q=Tower+A&cursor=opaque-cursor&limit=25",
+      "/reports?status=under_review&urgency=critical&assignee=00000000-0000-0000-0000-000000000004&needs_manual_triage=true&q=Tower+A&cursor=opaque-cursor&limit=25",
       "test-token",
     );
   });

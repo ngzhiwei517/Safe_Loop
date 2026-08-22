@@ -190,6 +190,39 @@ def test_raw_sql_ai_closure_is_rejected() -> None:
         run(cleanup(report_id))
 
 
+def test_raw_sql_ai_cannot_queue_a_draft_for_review() -> None:
+    report_id = run(make_report())
+    try:
+        async def check() -> str:
+            async with connection() as conn:
+                async with conn.transaction():
+                    await conn.execute(
+                        "select set_config('safeloop.actor_type', 'human', true)"
+                    )
+                    await conn.execute(
+                        "update reports set status = 'ai_drafted' where id = $1",
+                        report_id,
+                    )
+                    await conn.execute(
+                        "select set_config('safeloop.actor_type', 'ai', true)"
+                    )
+                    with pytest.raises(asyncpg.InsufficientPrivilegeError) as error:
+                        async with conn.transaction():
+                            await conn.execute(
+                                "update reports set status = 'under_review' where id = $1",
+                                report_id,
+                            )
+                    assert error.value.sqlstate == "42501"
+                    return await conn.fetchval(
+                        "select status::text from reports where id = $1",
+                        report_id,
+                    )
+
+        assert run(check()) == "ai_drafted"
+    finally:
+        run(cleanup(report_id))
+
+
 def test_raw_sql_ai_draft_update_is_rejected() -> None:
     report_id = run(make_report())
     try:
