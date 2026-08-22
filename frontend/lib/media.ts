@@ -115,6 +115,7 @@ export type ReportPhotoUpload = {
   file: File;
   userId: string;
   caption: string | null;
+  phase?: MediaPhase;
   downscale?: (file: File) => Promise<File>;
 };
 
@@ -133,6 +134,7 @@ export async function uploadReportPhoto({
   file,
   userId,
   caption,
+  phase = mediaPhase.original,
   reportId,
   accessToken,
   downscale = downscaleImage,
@@ -164,7 +166,7 @@ export async function uploadReportPhoto({
         body: JSON.stringify({
           storage_path: storagePath,
           mime_type: resized.type,
-          phase: mediaPhase.original,
+          phase,
           caption,
         }),
       },

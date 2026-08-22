@@ -69,6 +69,7 @@ def validate_media_registration(
     object_mime_type: str,
     object_size: int,
     phase: MediaPhase,
+    evidence_allowed: bool = False,
     policy: MediaPolicy | None = None,
 ) -> str:
     """Trust the stored object's metadata only after ownership and policy checks."""
@@ -87,12 +88,21 @@ def validate_media_registration(
     ):
         raise MediaError("media_path_invalid", "storage path does not belong to this actor and report")
 
-    if (
-        phase is not MediaPhase.ORIGINAL
-        or actor.role is not Role.REPORTER
-        or reporter_id != actor.profile_id
-    ):
-        raise MediaError("media_phase_not_permitted", "only the report owner can register original media")
+    original_allowed = (
+        phase is MediaPhase.ORIGINAL
+        and actor.role is Role.REPORTER
+        and reporter_id == actor.profile_id
+    )
+    responsible_evidence_allowed = (
+        phase is MediaPhase.EVIDENCE
+        and actor.role is Role.RESPONSIBLE
+        and evidence_allowed
+    )
+    if not original_allowed and not responsible_evidence_allowed:
+        raise MediaError(
+            "media_phase_not_permitted",
+            "actor cannot register media for this report phase",
+        )
 
     requested = requested_mime_type.strip().lower()
     stored = object_mime_type.strip().lower()
@@ -141,8 +151,27 @@ async def register_report_media(
     async with connection() as conn:
         async with conn.transaction():
             report = await conn.fetchrow(
-                "SELECT reporter_id FROM reports WHERE id = $1 FOR SHARE",
+                """
+                select
+                  report.reporter_id,
+                  exists (
+                    select 1
+                    from report_assignments assignment
+                    join corrective_actions action
+                      on action.assignment_id = assignment.id
+                     and action.report_id = assignment.report_id
+                    where assignment.report_id = report.id
+                      and assignment.assignee_id = $2
+                      and assignment.active
+                      and action.status = 'assigned'::action_status
+                      and report.status = 'action_assigned'::report_status
+                  ) as evidence_allowed
+                from reports report
+                where report.id = $1
+                for share
+                """,
                 report_id,
+                actor.profile_id,
             )
             if report is None:
                 raise MediaError("report_not_found", "report does not exist")
@@ -170,6 +199,7 @@ async def register_report_media(
                 object_mime_type=object_mime_type,
                 object_size=object_size,
                 phase=phase,
+                evidence_allowed=report["evidence_allowed"],
                 policy=policy,
             )
             try:

@@ -53,7 +53,18 @@ const queueItem: ReportListItem = {
   thumbnail_caption: "Floor opening",
   thumbnail_url: "https://project.example/photo.jpg?token=signed",
   thumbnail_url_expires_at: new Date(Date.now() + 600_000).toISOString(),
+  action_id: null,
+  action_text: null,
+  action_status: null,
+  action_due_at: null,
+  completed_note: null,
+  action_submitted_at: null,
   rework_count: 2,
+  deficiency_reason: null,
+  deficiency_notes: null,
+  deficiency_created_at: null,
+  deficiency_reviewer_name: null,
+  previous_evidence: [],
 };
 
 function renderQueue(locale = defaultLocale) {

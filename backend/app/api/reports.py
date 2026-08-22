@@ -22,6 +22,7 @@ from app.domain.enums import (
     Urgency,
 )
 from app.domain.transitions import TransitionError, allowed_targets, find
+from app.services.action_service import ActionError, submit_action
 from app.services.media_service import (
     MediaError,
     assert_report_readable,
@@ -104,6 +105,13 @@ class AssignmentRequest(BaseModel):
     due_at: datetime | None = None
 
 
+class ActionSubmitRequest(BaseModel):
+    """Reference proof already registered through the private media endpoint."""
+
+    completed_note: str | None = Field(default=None, max_length=4000)
+    media_ids: list[UUID] = Field(default_factory=list, max_length=10)
+
+
 class ClarificationAnswerRequest(BaseModel):
     """Carry reporter-supplied text for one pending clarification."""
 
@@ -174,6 +182,22 @@ def media_error(error: MediaError) -> HTTPException:
         "storage_not_configured": status.HTTP_500_INTERNAL_SERVER_ERROR,
         "storage_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
         "storage_sign_failed": status.HTTP_502_BAD_GATEWAY,
+    }
+    return HTTPException(
+        code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        {"code": error.code, "message": error.message},
+    )
+
+
+def action_error(error: ActionError) -> HTTPException:
+    """Map corrective-action failures to localisable machine contracts."""
+    code_status = {
+        "action_actor_forbidden": status.HTTP_403_FORBIDDEN,
+        "action_forbidden": status.HTTP_403_FORBIDDEN,
+        "action_not_found": status.HTTP_404_NOT_FOUND,
+        "action_not_submittable": status.HTTP_409_CONFLICT,
+        "action_evidence_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "action_media_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -273,11 +297,31 @@ async def report_list(
             cursor=cursor,
             limit=limit,
         )
-        paths = [
-            row["thumbnail_storage_path"]
-            for row in page.rows
-            if row["thumbnail_storage_path"] is not None
-        ]
+        raw_items = [dict(row) for row in page.rows]
+        paths: list[str] = []
+        for item in raw_items:
+            thumbnail_path = item.get("thumbnail_storage_path")
+            if isinstance(thumbnail_path, str):
+                paths.append(thumbnail_path)
+            previous_evidence = item.get("previous_evidence", [])
+            if isinstance(previous_evidence, str):
+                previous_evidence = json.loads(previous_evidence)
+            if not isinstance(previous_evidence, list):
+                previous_evidence = []
+            normalized_evidence = [
+                dict(evidence)
+                for evidence in previous_evidence
+                if isinstance(evidence, dict)
+            ]
+            item["previous_evidence"] = normalized_evidence
+            paths.extend(
+                evidence_path
+                for evidence in normalized_evidence
+                if isinstance(
+                    evidence_path := evidence.get("storage_path"),
+                    str,
+                )
+            )
         signed_urls, expires_at = await get_signed_media_urls(paths)
     except ReportListError as error:
         raise report_list_error(error) from error
@@ -285,12 +329,25 @@ async def report_list(
         raise media_error(error) from error
 
     items: list[dict[str, object]] = []
-    for row in page.rows:
-        item = dict(row)
+    for item in raw_items:
         item.pop("_urgency_rank", None)
         storage_path = item.pop("thumbnail_storage_path", None)
         item["thumbnail_url"] = signed_urls.get(storage_path) if isinstance(storage_path, str) else None
         item["thumbnail_url_expires_at"] = expires_at if isinstance(storage_path, str) else None
+        previous_evidence = item.get("previous_evidence", [])
+        if isinstance(previous_evidence, list):
+            for evidence in previous_evidence:
+                if not isinstance(evidence, dict):
+                    continue
+                evidence_path = evidence.pop("storage_path", None)
+                evidence["signed_url"] = (
+                    signed_urls.get(evidence_path)
+                    if isinstance(evidence_path, str)
+                    else None
+                )
+                evidence["signed_url_expires_at"] = (
+                    expires_at if isinstance(evidence_path, str) else None
+                )
         items.append(item)
     return cast(
         dict[str, object],
@@ -435,6 +492,41 @@ async def post_assignment(
                 "status": result.report["status"],
                 "assignment_id": result.assignment_id,
                 "corrective_action_id": result.corrective_action_id,
+            }
+        ),
+    )
+
+
+@router.post("/{report_id}/actions/{action_id}/submit")
+async def post_action_submission(
+    report_id: UUID,
+    action_id: UUID,
+    payload: ActionSubmitRequest,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Commit technician proof and the submit-evidence transition together."""
+    try:
+        result = await submit_action(
+            report_id,
+            action_id,
+            actor,
+            completed_note=payload.completed_note,
+            media_ids=payload.media_ids,
+        )
+    except ActionError as error:
+        raise action_error(error) from error
+    except TransitionError as error:
+        raise transition_error(error) from error
+    return cast(
+        dict[str, object],
+        jsonable_encoder(
+            {
+                "report_id": result.report["id"],
+                "action_id": result.action["id"],
+                "status": result.report["status"],
+                "completed_note": result.action["completed_note"],
+                "submitted_at": result.action["submitted_at"],
+                "media_ids": result.media_ids,
             }
         ),
     )

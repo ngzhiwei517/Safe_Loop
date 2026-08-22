@@ -10,5 +10,6 @@ export default async function LocaleHome({ params }: { params: Promise<{ locale:
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role === "reporter") redirect(`/${locale}/report/new`);
   if (profile?.role === "reviewer") redirect(`/${locale}/review`);
+  if (profile?.role === "responsible") redirect(`/${locale}/actions`);
   redirect(`/${locale}/not-authorised`);
 }

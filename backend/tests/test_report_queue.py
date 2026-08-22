@@ -279,3 +279,63 @@ def test_report_list_endpoint_batch_signs_one_thumbnail_page(
     assert "thumbnail_storage_path" not in items[0]
     assert "_urgency_rank" not in items[0]
     assert result["next_cursor"] == "next-page"
+
+
+def test_responsible_queue_batch_signs_previous_action_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = queue_row(0)
+    row.update(
+        {
+            "action_id": UUID("50000000-0000-0000-0000-000000000001"),
+            "action_text": "Secure the guardrail.",
+            "action_status": "assigned",
+            "action_due_at": datetime(2026, 8, 25, tzinfo=timezone.utc),
+            "completed_note": "Tightened the upper anchor.",
+            "action_submitted_at": datetime(2026, 8, 22, tzinfo=timezone.utc),
+            "deficiency_reason": "The lower anchor still moves.",
+            "deficiency_notes": None,
+            "deficiency_created_at": datetime(2026, 8, 22, 1, tzinfo=timezone.utc),
+            "deficiency_reviewer_name": "SO Lim",
+            "previous_evidence": [
+                {
+                    "id": "media-id",
+                    "storage_path": "responsible/report/proof.jpg",
+                    "caption": None,
+                    "created_at": "2026-08-22T00:00:00Z",
+                }
+            ],
+        }
+    )
+    captured_paths: list[str] = []
+
+    async def fake_list(*_: object, **__: object) -> ReportPage:
+        return ReportPage([row], None)  # type: ignore[list-item]
+
+    async def fake_sign(paths: list[str]) -> tuple[dict[str, str], datetime]:
+        captured_paths.extend(paths)
+        return (
+            {path: f"https://storage.example/{path}" for path in paths},
+            datetime(2026, 8, 22, 1, 10, tzinfo=timezone.utc),
+        )
+
+    monkeypatch.setattr(reports_api, "list_reports", fake_list)
+    monkeypatch.setattr(reports_api, "get_signed_media_urls", fake_sign)
+    result = asyncio.run(
+        reports_api.report_list(
+            report_status=ReportStatus.ACTION_ASSIGNED,
+            urgency=None,
+            assignee_id="me",
+            q=None,
+            cursor=None,
+            limit=25,
+            actor=Actor(ActorType.HUMAN, RESPONSIBLE_ID, Role.RESPONSIBLE),
+        )
+    )
+
+    assert captured_paths == ["responsible/report/proof.jpg"]
+    items = result["items"]
+    assert isinstance(items, list)
+    evidence = items[0]["previous_evidence"]
+    assert evidence[0]["signed_url"].endswith("proof.jpg")
+    assert "storage_path" not in evidence[0]

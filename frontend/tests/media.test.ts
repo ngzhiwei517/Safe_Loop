@@ -115,4 +115,44 @@ describe("report media", () => {
     expect(caught).toEqual(new Error("registration failed"));
     expect(remove).toHaveBeenCalledWith([expect.stringMatching(/^reporter-id\/report-id\//)]);
   });
+
+  it("reuses the same uploader for corrective-action evidence", async () => {
+    const upload = vi.fn(async () => ({ data: {}, error: null }));
+    const client = {
+      storage: {
+        from: () => ({
+          upload,
+          remove: vi.fn(async () => ({ data: [], error: null })),
+        }),
+      },
+    } as unknown as SupabaseClient;
+    vi.mocked(apiFetch).mockResolvedValue({
+      id: "evidence-id",
+      report_id: "report-id",
+      storage_path: "path",
+      mime_type: "image/jpeg",
+      phase: mediaPhase.evidence,
+      caption: null,
+    });
+
+    await uploadReportPhoto({
+      client,
+      file: new File(["photo"], "proof.jpg", { type: "image/jpeg" }),
+      userId: "responsible-id",
+      reportId: "report-id",
+      accessToken: "test-token",
+      caption: null,
+      phase: mediaPhase.evidence,
+      downscale: async (file) => file,
+    });
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/reports/report-id/media",
+      "test-token",
+      {
+        method: "POST",
+        body: expect.stringContaining('"phase":"evidence"'),
+      },
+    );
+  });
 });

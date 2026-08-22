@@ -83,6 +83,24 @@ def test_reporter_cannot_register_future_evidence_phase() -> None:
     assert error.value.code == "media_phase_not_permitted"
 
 
+def test_active_responsible_actor_can_register_evidence_phase() -> None:
+    assert (
+        validate_media_registration(
+            report_id=REPORT_ID,
+            reporter_id=REPORTER_ID,
+            actor=Actor(ActorType.HUMAN, OTHER_ID, Role.RESPONSIBLE),
+            storage_path=f"{OTHER_ID}/{REPORT_ID}/proof.jpg",
+            requested_mime_type="image/jpeg",
+            object_mime_type="image/jpeg",
+            object_size=1024,
+            phase=MediaPhase.EVIDENCE,
+            evidence_allowed=True,
+            policy=IMAGE_POLICY,
+        )
+        == "image/jpeg"
+    )
+
+
 def test_stored_metadata_not_browser_claim_controls_mime_type() -> None:
     with pytest.raises(MediaError) as error:
         validate(requested_mime_type="image/jpeg", object_mime_type="image/png")

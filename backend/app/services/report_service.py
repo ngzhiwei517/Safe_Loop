@@ -232,7 +232,18 @@ async def list_reports(
           queue_page.*,
           media.storage_path as thumbnail_storage_path,
           media.caption as thumbnail_caption,
-          coalesce(action.rework_count, 0)::integer as rework_count
+          action.id as action_id,
+          action.action_text,
+          action.action_status,
+          action.action_due_at,
+          action.completed_note,
+          action.submitted_at as action_submitted_at,
+          coalesce(action.rework_count, 0)::integer as rework_count,
+          action.deficiency_reason,
+          action.deficiency_notes,
+          action.deficiency_created_at,
+          action.deficiency_reviewer_name,
+          coalesce(action.previous_evidence, '[]'::jsonb) as previous_evidence
         from queue_page
         left join lateral (
           select report_media.storage_path, report_media.caption
@@ -243,9 +254,57 @@ async def list_reports(
           limit 1
         ) media on true
         left join lateral (
-          select max(corrective_actions.rework_count)::integer as rework_count
-          from corrective_actions
-          where corrective_actions.report_id = queue_page.id
+          select
+            corrective_action.id,
+            corrective_action.action_text,
+            corrective_action.status::text as action_status,
+            corrective_action.due_at as action_due_at,
+            corrective_action.completed_note,
+            corrective_action.submitted_at,
+            corrective_action.rework_count::integer as rework_count,
+            failed_verification.reason as deficiency_reason,
+            failed_verification.notes as deficiency_notes,
+            failed_verification.created_at as deficiency_created_at,
+            failed_verification.reviewer_name as deficiency_reviewer_name,
+            evidence.previous_evidence
+          from corrective_actions corrective_action
+          join report_assignments assignment
+            on assignment.id = corrective_action.assignment_id
+           and assignment.report_id = corrective_action.report_id
+           and assignment.active
+          left join lateral (
+            select
+              verification.reason,
+              verification.notes,
+              verification.created_at,
+              coalesce(
+                nullif(btrim(reviewer.display_name), ''),
+                reviewer.role::text
+              ) as reviewer_name
+            from verifications verification
+            join profiles reviewer on reviewer.id = verification.reviewer_id
+            where verification.corrective_action_id = corrective_action.id
+              and not verification.passed
+            order by verification.created_at desc, verification.id desc
+            limit 1
+          ) failed_verification on true
+          left join lateral (
+            select jsonb_agg(
+              jsonb_build_object(
+                'id', evidence_media.id,
+                'storage_path', evidence_media.storage_path,
+                'caption', evidence_media.caption,
+                'created_at', evidence_media.created_at
+              )
+              order by evidence_media.created_at, evidence_media.id
+            ) as previous_evidence
+            from report_media evidence_media
+            where evidence_media.corrective_action_id = corrective_action.id
+              and evidence_media.phase = 'evidence'::media_phase
+          ) evidence on true
+          where corrective_action.report_id = queue_page.id
+          order by corrective_action.created_at desc, corrective_action.id desc
+          limit 1
         ) action on true
         order by queue_page._urgency_rank desc, queue_page.created_at, queue_page.id
     """

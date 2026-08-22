@@ -117,7 +117,24 @@ export type ReportListItem = {
   thumbnail_caption: string | null;
   thumbnail_url: string | null;
   thumbnail_url_expires_at: string | null;
+  action_id: string | null;
+  action_text: string | null;
+  action_status: "assigned" | "submitted" | "verified" | null;
+  action_due_at: string | null;
+  completed_note: string | null;
+  action_submitted_at: string | null;
   rework_count: number;
+  deficiency_reason: string | null;
+  deficiency_notes: string | null;
+  deficiency_created_at: string | null;
+  deficiency_reviewer_name: string | null;
+  previous_evidence: Array<{
+    id: string;
+    caption: string | null;
+    created_at: string;
+    signed_url: string | null;
+    signed_url_expires_at: string | null;
+  }>;
 };
 
 export type ReportListPage = {
