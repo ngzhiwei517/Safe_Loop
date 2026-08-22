@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any
 from uuid import UUID
 
@@ -44,23 +45,32 @@ async def create_report(
 ) -> UUID:
     """Create a draft; the database trigger assigns its human reference."""
     async with connection() as conn:
-        report_id = await conn.fetchval(
-            """
-            INSERT INTO reports (
-              reporter_id, description_original, lang_original, urgency,
-              location_text, activity, is_confidential
+        async with conn.transaction():
+            report_id = await conn.fetchval(
+                """
+                INSERT INTO reports (
+                  reporter_id, description_original, lang_original, urgency,
+                  location_text, activity, is_confidential
+                )
+                VALUES ($1, $2, $3, $4::urgency, $5, $6, $7)
+                RETURNING id
+                """,
+                reporter_id,
+                description_original,
+                lang_original,
+                urgency,
+                location_text,
+                activity,
+                is_confidential,
             )
-            VALUES ($1, $2, $3, $4::urgency, $5, $6, $7)
-            RETURNING id
-            """,
-            reporter_id,
-            description_original,
-            lang_original,
-            urgency,
-            location_text,
-            activity,
-            is_confidential,
-        )
+            await conn.execute(
+                """
+                INSERT INTO audit_log (report_id, actor_type, actor_id, event, target, metadata)
+                VALUES ($1, 'human', $2, 'create_report', 'draft', '{}'::jsonb)
+                """,
+                report_id,
+                reporter_id,
+            )
     if not isinstance(report_id, UUID):
         raise RuntimeError("database returned an invalid report id")
     return report_id
@@ -133,7 +143,7 @@ async def transition_report(
                     source.value,
                     target.value,
                     reason,
-                    metadata or {},
+                    json.dumps(metadata or {}),
                 )
                 result = await conn.fetchrow("SELECT * FROM reports WHERE id = $1", report_id)
                 if result is None:
