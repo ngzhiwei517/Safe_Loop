@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_VERTEX_LOCATION = "asia-southeast1"
 
 
 class Settings(BaseSettings):
@@ -14,6 +17,16 @@ class Settings(BaseSettings):
     app_env: str = "local"
     allow_debug_auth: bool = False
     ai_provider: str = "stub"
+    vertex_project_id: str = ""
+    vertex_location: str = DEFAULT_VERTEX_LOCATION
+    vertex_model: str = "gemini-3.5-flash"
+    vertex_embedding_model: str = "gemini-embedding-001"
+    vertex_max_output_tokens: int = Field(default=4096, ge=256)
+    vertex_input_cost_per_million_usd: float = Field(default=1.65, ge=0.0)
+    vertex_output_cost_per_million_usd: float = Field(default=9.90, ge=0.0)
+    vertex_embedding_cost_per_million_usd: float = Field(default=0.15, ge=0.0)
+    ai_circuit_failure_threshold: int = Field(default=3, ge=1)
+    ai_circuit_reset_seconds: float = Field(default=60.0, gt=0.0)
     site_timezone: str = "Asia/Singapore"
     supported_locales: str = "en,zh-CN"
     supabase_jwt_secret: str = ""

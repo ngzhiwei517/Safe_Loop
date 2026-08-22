@@ -1,0 +1,287 @@
+[
+  {
+    "id": "e1000000-0000-0000-0000-000000000001",
+    "lang_original": "en",
+    "description_original": "The Level 6 slab edge has no guardrail while workers move formwork nearby.",
+    "location": "Tower A, Level 6",
+    "activity": "Formwork",
+    "expected_urgency": "high",
+    "expected_fact_markers": ["guardrail", "slab edge"],
+    "forbidden_fact_markers": ["fell", "injured", "hospital"],
+    "source": {
+      "content": "Workers must install guardrails before work starts at an open edge.",
+      "document_id": "d1000000-0000-0000-0000-000000000001",
+      "doc_ref": "WAH-001",
+      "revision": "3",
+      "section": "4.2",
+      "page": 7,
+      "similarity": 0.94
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000002",
+    "lang_original": "zh-CN",
+    "description_original": "六楼模板边缘没有护栏，工人正在附近搬运材料。",
+    "location": "A座六楼",
+    "activity": "搬运材料",
+    "expected_urgency": "high",
+    "expected_fact_markers": ["guardrail", "护栏", "edge"],
+    "forbidden_fact_markers": ["坠落", "受伤", "fell", "injured"],
+    "source": {
+      "content": "临边作业开始前必须安装牢固的护栏。",
+      "document_id": "d1000000-0000-0000-0000-000000000002",
+      "doc_ref": "WAH-ZH-001",
+      "revision": "2",
+      "section": "4.1",
+      "page": 5,
+      "similarity": 0.96
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000003",
+    "lang_original": "zh-CN",
+    "description_original": "六楼 formwork 边缘没有 guardrail，工人在两米外搬材料。",
+    "location": "Tower B Level 6",
+    "activity": "formwork",
+    "expected_urgency": "high",
+    "expected_fact_markers": ["guardrail", "edge"],
+    "forbidden_fact_markers": ["harness", "fell", "injured"],
+    "source": {
+      "content": "Workers must install guardrails before formwork starts beside an open edge.",
+      "document_id": "d1000000-0000-0000-0000-000000000003",
+      "doc_ref": "WAH-002",
+      "revision": "1",
+      "section": "5.3",
+      "page": 9,
+      "similarity": 0.95
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000004",
+    "lang_original": "zh-CN",
+    "description_original": "配电箱旁的 electrical cable 外皮破损，可以看到里面的铜线。",
+    "location": "地下室配电房",
+    "activity": "electrical inspection",
+    "expected_urgency": "high",
+    "expected_fact_markers": ["electrical cable", "铜线", "cable"],
+    "forbidden_fact_markers": ["electrocuted", "触电受伤", "fire started"],
+    "source": {
+      "content": "Damaged electrical cables must be isolated before anyone enters the work area.",
+      "document_id": "d1000000-0000-0000-0000-000000000004",
+      "doc_ref": "ELEC-004",
+      "revision": "4",
+      "section": "6.2",
+      "page": 11,
+      "similarity": 0.93
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000005",
+    "lang_original": "en",
+    "description_original": "Boxes are blocking the marked fire exit corridor.",
+    "location": "Level 2 east corridor",
+    "activity": "Material delivery",
+    "expected_urgency": "medium",
+    "expected_fact_markers": ["blocking", "fire exit"],
+    "forbidden_fact_markers": ["flames", "evacuation failed", "injured"],
+    "source": {
+      "content": "Fire exit routes must be kept clear at all times.",
+      "document_id": "d1000000-0000-0000-0000-000000000005",
+      "doc_ref": "FIRE-001",
+      "revision": "5",
+      "section": "3.1",
+      "page": 4,
+      "similarity": 0.91
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000006",
+    "lang_original": "zh-CN",
+    "description_original": "七楼脚手架的一块踏板松动，工人正在上面工作。",
+    "location": "七楼外墙",
+    "activity": "脚手架作业",
+    "expected_urgency": "high",
+    "expected_fact_markers": ["scaffold", "loose", "脚手架", "松动"],
+    "forbidden_fact_markers": ["倒塌", "坠落", "受伤", "collapsed", "fell", "injured"],
+    "source": {
+      "content": "发现松动踏板时必须停止使用脚手架并隔离该区域。",
+      "document_id": "d1000000-0000-0000-0000-000000000006",
+      "doc_ref": "SCF-ZH-002",
+      "revision": "2",
+      "section": "7.4",
+      "page": 13,
+      "similarity": 0.95
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000007",
+    "lang_original": "en",
+    "description_original": "Water is leaking across the walkway beside the temporary distribution board.",
+    "location": "Ground floor loading bay",
+    "activity": "Concrete delivery",
+    "expected_urgency": "medium",
+    "expected_fact_markers": ["water", "leaking", "walkway"],
+    "forbidden_fact_markers": ["electrocution", "slipped", "injured"],
+    "source": {
+      "content": "Wet walkways must be isolated and dried before access is restored.",
+      "document_id": "d1000000-0000-0000-0000-000000000007",
+      "doc_ref": "HOUSE-003",
+      "revision": "1",
+      "section": "2.5",
+      "page": 3,
+      "similarity": 0.88
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000008",
+    "lang_original": "zh-CN",
+    "description_original": "焊接火花落在旁边的纸箱上，气瓶距离约一米。",
+    "location": "一楼维修区",
+    "activity": "焊接",
+    "expected_urgency": "high",
+    "expected_fact_markers": ["火花", "纸箱", "气瓶", "spark", "cardboard", "gas cylinder"],
+    "forbidden_fact_markers": ["起火", "爆炸", "受伤", "fire started", "exploded", "injured"],
+    "source": {
+      "content": "焊接前必须清除火花范围内的可燃物并移开气瓶。",
+      "document_id": "d1000000-0000-0000-0000-000000000008",
+      "doc_ref": "HOT-ZH-001",
+      "revision": "3",
+      "section": "5.2",
+      "page": 8,
+      "similarity": 0.92
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000009",
+    "lang_original": "en",
+    "description_original": "An exposed cable joint is lying on the metal access platform.",
+    "location": "Tower C Level 4",
+    "activity": "Mechanical installation",
+    "expected_urgency": "high",
+    "expected_fact_markers": ["exposed cable", "cable joint"],
+    "forbidden_fact_markers": ["energised", "shock", "injured"],
+    "source": {
+      "content": "Exposed cable joints must be isolated and repaired by an authorised electrician.",
+      "document_id": "d1000000-0000-0000-0000-000000000009",
+      "doc_ref": "ELEC-002",
+      "revision": "6",
+      "section": "8.1",
+      "page": 14,
+      "similarity": 0.94
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000010",
+    "lang_original": "zh-CN",
+    "description_original": "安全出口门前堆着三袋水泥，门不能完全打开。",
+    "location": "B座二楼",
+    "activity": "材料存放",
+    "expected_urgency": "medium",
+    "expected_fact_markers": ["安全出口", "水泥", "门", "fire exit", "cement", "door"],
+    "forbidden_fact_markers": ["火灾", "疏散", "受伤", "fire occurred", "evacuation", "injured"],
+    "source": {
+      "content": "安全出口和疏散门前必须始终保持畅通。",
+      "document_id": "d1000000-0000-0000-0000-000000000010",
+      "doc_ref": "FIRE-ZH-001",
+      "revision": "2",
+      "section": "3.3",
+      "page": 6,
+      "similarity": 0.93
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000011",
+    "lang_original": "en",
+    "description_original": "Loose timber offcuts are inside the marked lifting exclusion zone.",
+    "location": "Tower A south yard",
+    "activity": "Crane lifting",
+    "expected_urgency": "medium",
+    "expected_fact_markers": ["loose timber", "lifting exclusion zone"],
+    "forbidden_fact_markers": ["struck", "load fell", "injured"],
+    "source": {
+      "content": "The lifting exclusion zone must be cleared before a crane lift begins.",
+      "document_id": "d1000000-0000-0000-0000-000000000011",
+      "doc_ref": "LIFT-005",
+      "revision": "1",
+      "section": "4.7",
+      "page": 10,
+      "similarity": 0.9
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000012",
+    "lang_original": "zh-CN",
+    "description_original": "楼板开口没有盖板，旁边只有一条警示带。",
+    "location": "A座五楼",
+    "activity": "机电安装",
+    "expected_urgency": "high",
+    "expected_fact_markers": ["楼板开口", "盖板", "警示带", "floor opening", "cover", "warning tape"],
+    "forbidden_fact_markers": ["坠落", "受伤", "死亡", "fell", "injured", "died"],
+    "source": {
+      "content": "楼板开口必须安装固定盖板或完整护栏。",
+      "document_id": "d1000000-0000-0000-0000-000000000012",
+      "doc_ref": "WAH-ZH-004",
+      "revision": "1",
+      "section": "6.1",
+      "page": 12,
+      "similarity": 0.97
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000013",
+    "lang_original": "en",
+    "description_original": "The scaffold base is sinking and two standards are leaning toward the road.",
+    "location": "West elevation",
+    "activity": "Facade work",
+    "expected_urgency": "critical",
+    "expected_fact_markers": ["scaffold base", "leaning"],
+    "forbidden_fact_markers": ["collapsed", "struck", "injured"],
+    "source": {
+      "content": "Stop scaffold work immediately when settlement or leaning is observed.",
+      "document_id": "d1000000-0000-0000-0000-000000000013",
+      "doc_ref": "SCF-006",
+      "revision": "4",
+      "section": "9.2",
+      "page": 17,
+      "similarity": 0.96
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000014",
+    "lang_original": "en",
+    "description_original": "Something is unsafe near the loading bay ramp.",
+    "location": "Loading bay ramp",
+    "activity": null,
+    "expected_urgency": "medium",
+    "expected_fact_markers": ["unsafe", "loading bay"],
+    "forbidden_fact_markers": ["vehicle", "person", "injured", "spill"],
+    "source": {
+      "content": "The area must be isolated until the reported hazard is identified.",
+      "document_id": "d1000000-0000-0000-0000-000000000014",
+      "doc_ref": "GEN-001",
+      "revision": "2",
+      "section": "2.1",
+      "page": 2,
+      "similarity": 0.75
+    }
+  },
+  {
+    "id": "e1000000-0000-0000-0000-000000000015",
+    "lang_original": "zh-CN",
+    "description_original": "这里不安全，位置在北门旁边。",
+    "location": "北门",
+    "activity": null,
+    "expected_urgency": "medium",
+    "expected_fact_markers": ["不安全", "北门", "unsafe", "north gate"],
+    "forbidden_fact_markers": ["车辆", "工人", "受伤", "漏水", "vehicle", "worker", "injured", "water leak"],
+    "source": {
+      "content": "未查明危险前必须隔离报告区域。",
+      "document_id": "d1000000-0000-0000-0000-000000000015",
+      "doc_ref": "GEN-ZH-001",
+      "revision": "2",
+      "section": "2.1",
+      "page": 2,
+      "similarity": 0.76
+    }
+  }
+]

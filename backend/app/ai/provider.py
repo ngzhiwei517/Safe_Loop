@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
+from functools import lru_cache
 from hashlib import sha256
 import json
 from math import ceil, floor, sqrt
 import os
 import re
-from typing import Final, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, Protocol, TypeAlias, cast
 import unicodedata
 from uuid import UUID
 
@@ -18,6 +19,9 @@ from pydantic import BaseModel, ValidationError
 
 from app.ai.prompts import render_prompt
 from app.config import get_settings
+
+if TYPE_CHECKING:
+    from app.ai.llm_provider import LLMProvider  # noqa: F401
 
 JsonScalar: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -349,9 +353,32 @@ def _feature_hash_embedding(text: str) -> Vector:
     return [round(value / magnitude, 8) for value in values]
 
 
+@lru_cache(maxsize=8)
+def _cached_vertex_provider(config: object) -> AIProvider:
+    from app.ai.llm_provider import LLMProvider, LLMProviderConfig
+
+    if not isinstance(config, LLMProviderConfig):
+        raise ProviderConfigurationError("invalid Vertex provider configuration")
+    return LLMProvider(config)
+
+
 def get_provider() -> AIProvider:
     """Select only configured implementations and reject silent production fallbacks."""
-    provider_name = get_settings().ai_provider.strip().lower()
+    settings = get_settings()
+    provider_name = settings.ai_provider.strip().lower()
     if provider_name == StubProvider.provider_name:
         return StubProvider(selected_provider=provider_name)
+    if provider_name in {"llm", "vertex"}:
+        from app.ai.llm_provider import LLMProviderConfig
+
+        return _cached_vertex_provider(LLMProviderConfig.from_settings(settings))
     raise ProviderConfigurationError("configured AI_PROVIDER is not implemented")
+
+
+def __getattr__(name: str) -> object:
+    """Keep the real implementation importable without loading its SDK for the stub."""
+    if name == "LLMProvider":
+        from app.ai.llm_provider import LLMProvider
+
+        return LLMProvider
+    raise AttributeError(name)

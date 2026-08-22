@@ -24,7 +24,7 @@ async def main() -> int:
     if not (root / "supabase" / "migrations").is_dir():
         return fail("FAIL working directory: run this command from the repository root.")
     try:
-        for module in ("fastapi", "asyncpg", "pydantic_settings"):
+        for module in ("fastapi", "asyncpg", "google.genai", "pydantic_settings"):
             importlib.import_module(module)
     except ImportError as error:
         return fail(f"FAIL dependencies: install backend requirements ({error.name}).")
