@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     ai_provider: str = "stub"
     site_timezone: str = "Asia/Singapore"
     supported_locales: str = "en,zh-CN"
+    supabase_jwt_secret: str = ""
+    supabase_jwt_audience: str = "authenticated"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
