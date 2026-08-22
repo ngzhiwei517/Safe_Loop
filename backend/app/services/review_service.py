@@ -11,6 +11,7 @@ import asyncpg
 
 from app.db import connection
 from app.domain.enums import CaseRole, ReportStatus, ReviewDecision, Urgency
+from app.services.notification_service import NotificationEntity, send_notification
 from app.services.report_service import Actor, transition_report
 
 
@@ -79,11 +80,11 @@ async def review_report(
     async with connection() as conn:
         try:
             async with conn.transaction():
-                report_exists = await conn.fetchval(
-                    "select exists (select 1 from reports where id = $1)",
+                report = await conn.fetchrow(
+                    "select reporter_id from reports where id = $1",
                     report_id,
                 )
-                if not report_exists:
+                if report is None:
                     raise ReviewError("report_not_found", "report does not exist")
 
                 draft = await conn.fetchrow(
@@ -173,6 +174,28 @@ async def review_report(
                         assignment_id,
                         action_text,
                         due_at,
+                    )
+                    if assignment_id is None or corrective_action_id is None:
+                        raise RuntimeError("database did not return assignment records")
+                    await send_notification(
+                        assignee_id,
+                        "assigned",
+                        NotificationEntity("report", report_id),
+                        {
+                            "report_id": report_id,
+                            "assignment_id": assignment_id,
+                            "corrective_action_id": corrective_action_id,
+                        },
+                        transaction_connection=conn,
+                    )
+
+                if target is ReportStatus.INFO_REQUESTED:
+                    await send_notification(
+                        report["reporter_id"],
+                        "info_requested",
+                        NotificationEntity("report", report_id),
+                        {"report_id": report_id, "review_id": review["id"]},
+                        transaction_connection=conn,
                     )
 
                 transitioned = await transition_report(

@@ -149,6 +149,9 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
       inboxLabel={t("app.inbox")}
       inboxIcon={<BellIcon className="h-6 w-6" />}
       unreadCount={0}
+      pollStatus
+      showUrgentAlerts
+      alertsHref={`/${locale}/alerts`}
       navItems={navItems}
       activeHref={`/${locale}/review`}
       languageSwitch={languageSwitch}

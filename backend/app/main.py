@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.alerts import router as alerts_router
+from app.api.notifications import router as notifications_router
 from app.config import get_settings
 from app.api.reports import router as reports_router
 from app.domain.transitions import TRANSITIONS
@@ -22,6 +24,8 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Debug-Role", "X-Debug-User"],
 )
 app.include_router(reports_router)
+app.include_router(notifications_router)
+app.include_router(alerts_router)
 
 
 @app.get("/health")

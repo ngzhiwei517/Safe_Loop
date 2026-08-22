@@ -1,5 +1,14 @@
+"use client";
+
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
+import { type ReactNode, useEffect, useState } from "react";
+
+import { listAlerts, type AlertItem } from "../../lib/alerts";
+import { listNotifications } from "../../lib/notifications";
+import { alertPollIntervalMs } from "../../lib/site";
+import { createClient } from "../../lib/supabase/browser";
+import { Banner } from "./Banner";
 
 export type AppShellNavItem = { href: string; label: string; icon: ReactNode };
 
@@ -26,6 +35,9 @@ type AppShellProps = (IdentityHeader | TitleHeader) & {
   navItems: AppShellNavItem[];
   activeHref: string;
   languageSwitch?: ReactNode;
+  pollStatus?: boolean;
+  showUrgentAlerts?: boolean;
+  alertsHref?: string;
 };
 
 export function AppShell({
@@ -41,9 +53,65 @@ export function AppShell({
   navItems,
   activeHref,
   languageSwitch = null,
+  pollStatus = false,
+  showUrgentAlerts = false,
+  alertsHref,
 }: AppShellProps) {
+  const t = useTranslations();
+  const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
+  const [priorityUnreadCount, setPriorityUnreadCount] = useState(0);
+  const [urgentAlert, setUrgentAlert] = useState<AlertItem | null>(null);
+
+  useEffect(() => {
+    if (!pollStatus) return;
+    let active = true;
+
+    async function refresh() {
+      try {
+        const {
+          data: { session },
+        } = await createClient().auth.getSession();
+        if (!session) return;
+        const feed = await listNotifications(session.access_token, 1);
+        if (!active) return;
+        setLiveUnreadCount(feed.unread_count);
+        setPriorityUnreadCount(feed.priority_unread_count);
+        if (showUrgentAlerts) {
+          const alerts = await listAlerts(session.access_token);
+          if (!active) return;
+          setUrgentAlert(
+            alerts.find(
+              (alert) =>
+                alert.acknowledged_at === null && alert.resolution_note === null,
+            ) ?? null,
+          );
+        }
+      } catch {
+        // Keep the last confirmed badge and alert until a later poll succeeds.
+      }
+    }
+
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), alertPollIntervalMs);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [pollStatus, showUrgentAlerts]);
+
   return (
     <div className="mx-auto flex min-h-screen max-w-[430px] flex-col bg-bg">
+      {urgentAlert && alertsHref && (
+        <Link href={alertsHref} className="block" aria-label={t("alert.banner.open")}>
+          <Banner
+            tone="urgent"
+            title={t("alert.banner.title")}
+            detail={t("alert.banner.detail", {
+              location: urgentAlert.location_text ?? t("alert.locationUnknown"),
+            })}
+          />
+        </Link>
+      )}
       <header className="flex items-center gap-2 px-5 pb-2 pt-4">
         {title ? (
           <h1 className="min-w-0 flex-1 text-xl font-bold text-ink">{title}</h1>
@@ -63,9 +131,9 @@ export function AppShell({
           aria-label={inboxLabel}
         >
           {inboxIcon}
-          {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 min-w-5 rounded-chip bg-danger px-1 text-center text-xs font-bold text-ink-inverse">
-              {unreadCount}
+          {liveUnreadCount > 0 && (
+            <span className={`absolute -right-1 -top-1 min-w-5 rounded-chip bg-danger px-1 text-center text-xs font-bold text-ink-inverse ${priorityUnreadCount > 0 ? "ring-2 ring-warningTint" : ""}`}>
+              {liveUnreadCount}
             </span>
           )}
         </Link>

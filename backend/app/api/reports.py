@@ -22,12 +22,14 @@ from app.services.media_service import (
 )
 from app.services.report_service import (
     Actor,
+    ReportDraftError,
     ReportListError,
     create_report,
     get_report,
     get_timeline,
     list_reports,
     transition_report,
+    update_draft_report,
 )
 from app.services.review_service import ReviewError, review_report
 
@@ -163,6 +165,19 @@ def report_list_error(error: ReportListError) -> HTTPException:
     )
 
 
+def report_draft_error(error: ReportDraftError) -> HTTPException:
+    """Map reporter-owned draft finalisation failures to stable codes."""
+    code_status = {
+        "report_not_found": status.HTTP_404_NOT_FOUND,
+        "report_forbidden": status.HTTP_403_FORBIDDEN,
+        "draft_update_forbidden": status.HTTP_409_CONFLICT,
+    }
+    return HTTPException(
+        code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        {"code": error.code, "message": error.message},
+    )
+
+
 @router.get("")
 async def report_list(
     report_status: ReportStatus | None = Query(default=None, alias="status"),
@@ -227,6 +242,33 @@ async def post_report(payload: CreateReportRequest, actor: Actor = Depends(curre
         input_mode=payload.input_mode,
     )
     return {"id": report_id}
+
+
+@router.patch("/{report_id}")
+async def patch_report_draft(
+    report_id: UUID,
+    payload: CreateReportRequest,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Update only the caller's draft before the normal submit transition."""
+    if actor.profile_id is None:
+        raise HTTPException(403, {"code": "profile_required", "message": "human profile is required"})
+    try:
+        report = await update_draft_report(
+            report_id,
+            actor.profile_id,
+            payload.description_original,
+            lang_original=payload.lang_original,
+            location_text=payload.location_text,
+            activity=payload.activity,
+            level_or_zone=payload.level_or_zone,
+            grid_ref=payload.grid_ref,
+            is_confidential=payload.is_confidential,
+            input_mode=payload.input_mode,
+        )
+    except ReportDraftError as error:
+        raise report_draft_error(error) from error
+    return cast(dict[str, object], jsonable_encoder(dict(report)))
 
 
 @router.get("/{report_id}")

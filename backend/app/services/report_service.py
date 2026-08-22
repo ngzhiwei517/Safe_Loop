@@ -48,6 +48,15 @@ class ReportListError(Exception):
         self.message = message
 
 
+class ReportDraftError(Exception):
+    """Carry a stable draft-update code without exposing user-facing prose."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 @dataclass(frozen=True)
 class ReportPage:
     """Return one stable queue page and the cursor for the following page."""
@@ -285,6 +294,61 @@ async def create_report(
     if not isinstance(report_id, UUID):
         raise RuntimeError("database returned an invalid report id")
     return report_id
+
+
+async def update_draft_report(
+    report_id: UUID,
+    reporter_id: UUID,
+    description_original: str,
+    *,
+    lang_original: str,
+    location_text: str | None,
+    activity: str | None,
+    level_or_zone: str | None,
+    grid_ref: str | None,
+    is_confidential: bool,
+    input_mode: InputMode,
+) -> asyncpg.Record:
+    """Finish an urgent draft without creating a second path for status writes."""
+    async with connection() as conn:
+        async with conn.transaction():
+            report = await conn.fetchrow(
+                "select * from reports where id = $1 for update",
+                report_id,
+            )
+            if report is None:
+                raise ReportDraftError("report_not_found", "report does not exist")
+            if report["reporter_id"] != reporter_id:
+                raise ReportDraftError("report_forbidden", "draft belongs to another reporter")
+            if ReportStatus(report["status"]) is not ReportStatus.DRAFT:
+                raise ReportDraftError("draft_update_forbidden", "only a draft can be updated")
+            updated = await conn.fetchrow(
+                """
+                update reports
+                set description_original = $2,
+                    lang_original = $3,
+                    location_text = $4,
+                    activity = $5,
+                    level_or_zone = $6,
+                    grid_ref = $7,
+                    is_confidential = $8,
+                    input_mode = $9::input_mode
+                where id = $1
+                returning *
+                """,
+                report_id,
+                description_original,
+                lang_original,
+                location_text,
+                activity,
+                level_or_zone,
+                grid_ref,
+                is_confidential,
+                input_mode.value,
+            )
+            if updated is None:
+                raise RuntimeError("draft disappeared while updating")
+            return updated
 
 
 async def get_report(report_id: UUID) -> asyncpg.Record | None:

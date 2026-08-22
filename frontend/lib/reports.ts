@@ -120,8 +120,14 @@ export async function fileReport(
   input: NewReportInput,
   accessToken: string,
   photo?: ReportPhotoUpload,
+  existingDraftId?: string,
 ): Promise<SubmittedReport> {
-  const created = await apiFetch<CreatedReport>("/reports", accessToken, { method: "POST", body: JSON.stringify(input) });
+  const created = existingDraftId
+    ? await apiFetch<CreatedReport>(`/reports/${existingDraftId}`, accessToken, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      })
+    : await createReportDraft(input, accessToken);
   if (photo) {
     await uploadReportPhoto({
       ...photo,
@@ -132,6 +138,16 @@ export async function fileReport(
   return apiFetch<SubmittedReport>(`/reports/${created.id}/transition`, accessToken, {
     method: "POST",
     body: JSON.stringify({ target: reportStatus.submitted }),
+  });
+}
+
+export function createReportDraft(
+  input: NewReportInput,
+  accessToken: string,
+): Promise<CreatedReport> {
+  return apiFetch<CreatedReport>("/reports", accessToken, {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 

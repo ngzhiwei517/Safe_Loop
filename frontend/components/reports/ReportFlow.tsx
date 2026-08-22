@@ -5,6 +5,7 @@ import {
   CameraIcon,
   CheckCircleIcon,
   ChevronDownIcon,
+  ClockIcon,
   ExclamationTriangleIcon,
   PlusIcon,
   ShieldExclamationIcon,
@@ -14,19 +15,31 @@ import { useRouter } from "next/navigation";
 import React, { ChangeEvent, useEffect, useState } from "react";
 
 import {
+  getAlert,
+  raiseAlert,
+  reporterAlertCopyKey,
+  type AlertItem,
+} from "../../lib/alerts";
+import {
   defaultLocale,
+  formatDateTime,
   isLocale,
   locales,
   type Locale,
 } from "../../lib/locales";
-import { fileReport } from "../../lib/reports";
+import {
+  createReportDraft,
+  fileReport,
+  type NewReportInput,
+} from "../../lib/reports";
+import { alertPollIntervalMs, siteEmergencyLine } from "../../lib/site";
 import { createClient } from "../../lib/supabase/browser";
 import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
 import { Card } from "../ui/Card";
 import { Field } from "../ui/Field";
 
-type FlowStep = "capture" | "question" | "review";
+type FlowStep = "capture" | "question" | "urgent" | "review";
 type DangerAnswer = "yes" | "no" | null;
 
 export function ReportFlow() {
@@ -44,6 +57,10 @@ export function ReportFlow() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [confidential, setConfidential] = useState(false);
   const [danger, setDanger] = useState<DangerAnswer>(null);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [urgentAlert, setUrgentAlert] = useState<AlertItem | null>(null);
+  const [alerting, setAlerting] = useState(false);
+  const [alertFailed, setAlertFailed] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -60,8 +77,72 @@ export function ReportFlow() {
     return () => URL.revokeObjectURL(url);
   }, [photo]);
 
+  useEffect(() => {
+    if (step !== "urgent" || urgentAlert === null) return;
+    let active = true;
+
+    async function refreshAlert() {
+      try {
+        const {
+          data: { session },
+        } = await createClient().auth.getSession();
+        if (!session) return;
+        const refreshed = await getAlert(urgentAlert!.id, session.access_token);
+        if (active) setUrgentAlert(refreshed);
+      } catch {
+        // The last confirmed state remains visible until the next poll succeeds.
+      }
+    }
+
+    const interval = window.setInterval(() => void refreshAlert(), alertPollIntervalMs);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [step, urgentAlert?.id]);
+
   function selectPhoto(event: ChangeEvent<HTMLInputElement>) {
     setPhoto(event.target.files?.[0] ?? null);
+  }
+
+  function reportInput(): NewReportInput {
+    return {
+      description_original: description.trim(),
+      lang_original: langOriginal,
+      location_text: location.trim(),
+      activity: activity.trim(),
+      level_or_zone: levelOrZone.trim() || null,
+      grid_ref: gridRef.trim() || null,
+      is_confidential: confidential,
+      input_mode: "typed",
+    };
+  }
+
+  async function sendUrgentAlert() {
+    setDanger("yes");
+    setAlerting(true);
+    setAlertFailed(false);
+    try {
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error("session_required");
+
+      let reportId = draftId;
+      if (!reportId) {
+        const draft = await createReportDraft(reportInput(), session.access_token);
+        reportId = draft.id;
+        setDraftId(reportId);
+      }
+      const alert = await raiseAlert(reportId, location, session.access_token);
+      setUrgentAlert(alert);
+      setStep("urgent");
+    } catch {
+      setAlertFailed(true);
+    } finally {
+      setAlerting(false);
+    }
   }
 
   async function submit() {
@@ -78,16 +159,7 @@ export function ReportFlow() {
       }
 
       const report = await fileReport(
-        {
-          description_original: description.trim(),
-          lang_original: langOriginal,
-          location_text: location.trim(),
-          activity: activity.trim(),
-          level_or_zone: levelOrZone.trim() || null,
-          grid_ref: gridRef.trim() || null,
-          is_confidential: confidential,
-          input_mode: "typed",
-        },
+        reportInput(),
         session.access_token,
         photo
           ? {
@@ -95,8 +167,9 @@ export function ReportFlow() {
               file: photo,
               userId: session.user.id,
               caption: description.trim(),
-            }
+          }
           : undefined,
+        draftId ?? undefined,
       );
       try {
         sessionStorage.setItem(
@@ -111,6 +184,61 @@ export function ReportFlow() {
       setFailed(true);
       setSubmitting(false);
     }
+  }
+
+  if (step === "urgent" && urgentAlert) {
+    const copyKey = reporterAlertCopyKey(urgentAlert);
+    const acknowledged = copyKey === "alert.reporter.acknowledged";
+    const escalated = copyKey === "alert.reporter.escalated";
+    const screenStyle = acknowledged
+      ? "from-success to-successStrong"
+      : escalated
+        ? "from-warning to-dangerStrong"
+        : "from-danger to-dangerStrong";
+    return (
+      <main className={`mx-auto flex min-h-screen max-w-[430px] flex-col bg-gradient-to-br ${screenStyle} px-6 py-10 text-ink-inverse`}>
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <div className="grid h-24 w-24 place-items-center rounded-full border-4 border-ink-inverse/40 bg-ink-inverse/15">
+            {acknowledged ? (
+              <CheckCircleIcon className="h-14 w-14" />
+            ) : (
+              <ExclamationTriangleIcon className="h-14 w-14" />
+            )}
+          </div>
+          <h1 className="mt-7 text-3xl font-bold">
+            {t(`${copyKey}.title`, {
+              name: urgentAlert.acknowledged_by_name ?? "",
+            })}
+          </h1>
+          <p className="mt-4 text-lg">
+            {t(`${copyKey}.detail`, {
+              name: urgentAlert.acknowledged_by_name ?? "",
+              location: urgentAlert.location_text ?? t("alert.locationUnknown"),
+            })}
+          </p>
+          <div className="mt-6 flex items-center gap-2 rounded-chip bg-ink-inverse/15 px-4 py-3 text-base font-bold">
+            <ClockIcon className="h-5 w-5" />
+            <span>{t(`${copyKey}.status`, {
+              sentTime: formatDateTime(urgentAlert.raised_at, locale),
+              acknowledgedTime: urgentAlert.acknowledged_at
+                ? formatDateTime(urgentAlert.acknowledged_at, locale)
+                : "",
+              name: urgentAlert.acknowledged_by_name ?? "",
+            })}</span>
+          </div>
+        </div>
+        <div className="space-y-4 pt-8 text-center">
+          <SecondaryButton
+            className="border-ink-inverse bg-ink-inverse text-dangerStrong"
+            label={t("alert.reporter.continue")}
+            onClick={() => setStep("review")}
+          />
+          <p className="text-base font-bold">
+            {t("alert.reporter.emergency", { number: siteEmergencyLine })}
+          </p>
+        </div>
+      </main>
+    );
   }
 
   const stepNumber = step === "capture" ? 1 : step === "question" ? 2 : 3;
@@ -187,6 +315,12 @@ export function ReportFlow() {
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
+            <Field
+              label={t("report.new.location")}
+              placeholder={t("report.new.locationPlaceholder")}
+              value={location}
+              onChange={(event) => setLocation(event.target.value)}
+            />
             <label className="block text-sm font-bold text-inkMuted">
               <span>{t("report.new.reportLanguage")}</span>
               <select
@@ -236,7 +370,10 @@ export function ReportFlow() {
                     ? "border-primary bg-primaryTint"
                     : "border-border bg-surface"
                 }`}
-                onClick={() => setDanger(answer)}
+                onClick={() =>
+                  answer === "yes" ? void sendUrgentAlert() : setDanger("no")
+                }
+                disabled={alerting}
               >
                 {answer === "yes" ? (
                   <ExclamationTriangleIcon className="h-7 w-7 shrink-0 text-danger" />
@@ -255,9 +392,16 @@ export function ReportFlow() {
               </button>
             ))}
           </Card>
+          {alertFailed && (
+            <Banner
+              tone="urgent"
+              title={t("alert.reporter.failedTitle")}
+              detail={t("alert.reporter.failedDetail", { number: siteEmergencyLine })}
+            />
+          )}
           <PrimaryButton
-            label={t("report.new.continue")}
-            disabled={!danger}
+            label={alerting ? t("alert.reporter.sending") : t("report.new.continue")}
+            disabled={!danger || danger === "yes" || alerting}
             onClick={() => setStep("review")}
           />
         </div>

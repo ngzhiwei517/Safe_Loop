@@ -17,6 +17,7 @@ from app.db import close_pool, connection, init_pool
 from app.domain.enums import ActorType, ReportStatus, ReviewDecision, Role
 from app.domain.transitions import TransitionError
 from app.services.report_service import Actor, create_report, transition_report
+from app.services import review_service as review_service_module
 from app.services.review_service import ReviewError, review_report
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -51,6 +52,10 @@ def run(coroutine: Coroutine[Any, Any, T]) -> T:
 
 async def cleanup(report_id: UUID) -> None:
     async with connection() as conn:
+        await conn.execute(
+            "delete from notifications where entity_type = 'report' and entity_id = $1",
+            report_id,
+        )
         await conn.execute("delete from reports where id = $1", report_id)
 
 
@@ -177,6 +182,51 @@ def test_approval_creates_assignment_action_decision_and_transition() -> None:
         assert action_text == "Install secured guardrails before work resumes."
         assert assignee_id == RESPONSIBLE_ID
         assert stored_due_at == due_at
+
+        async def read_notification() -> tuple[str, UUID]:
+            async with connection() as conn:
+                row = await conn.fetchrow(
+                    """
+                    select kind, recipient_id
+                    from notifications
+                    where entity_type = 'report' and entity_id = $1
+                    """,
+                    report_id,
+                )
+                assert row is not None
+                return row["kind"], row["recipient_id"]
+
+        assert run(read_notification()) == ("assigned", RESPONSIBLE_ID)
+    finally:
+        run(cleanup(report_id))
+
+
+def test_assignment_rolls_back_when_notification_cannot_be_written(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report_id = run(make_report())
+    try:
+        run(move_to_review(report_id))
+
+        async def fail_notification(*_: object, **__: object) -> None:
+            raise RuntimeError("notification unavailable")
+
+        monkeypatch.setattr(review_service_module, "send_notification", fail_notification)
+        with pytest.raises(RuntimeError, match="notification unavailable"):
+            run(
+                review_report(
+                    report_id,
+                    Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+                    decision=ReviewDecision.APPROVE,
+                    target=ReportStatus.ACTION_ASSIGNED,
+                    corrected_action="Install secured guardrails.",
+                    correction_reason="Reviewer defined the Phase 1 action.",
+                    assignee_id=RESPONSIBLE_ID,
+                    due_at=datetime.now(timezone.utc) + timedelta(days=1),
+                )
+            )
+
+        assert run(review_state(report_id)) == ("under_review", 0, 0, 0, 4)
     finally:
         run(cleanup(report_id))
 

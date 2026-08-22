@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     report_media_allowed_mime_types: str = "image/jpeg,image/png,image/webp"
     report_media_max_bytes: int = 10 * 1024 * 1024
     report_media_signed_url_ttl_seconds: int = 600
+    alert_escalate_minutes: int = 5
     frontend_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

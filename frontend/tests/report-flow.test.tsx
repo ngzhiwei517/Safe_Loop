@@ -7,8 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReportFlow } from "../components/reports/ReportFlow";
 import en from "../messages/en.json";
 import zh from "../messages/zh-CN.json";
+import { getAlert, raiseAlert } from "../lib/alerts";
 import { defaultLocale, locales } from "../lib/locales";
-import { fileReport } from "../lib/reports";
+import { createReportDraft, fileReport } from "../lib/reports";
 import { reportStatus } from "../lib/stateMachine";
 
 const navigation = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn() }));
@@ -26,7 +27,14 @@ const supabase = vi.hoisted(() => ({
   storage: {},
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
-vi.mock("../lib/reports", () => ({ fileReport: vi.fn() }));
+vi.mock("../lib/reports", () => ({
+  createReportDraft: vi.fn(),
+  fileReport: vi.fn(),
+}));
+vi.mock("../lib/alerts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/alerts")>();
+  return { ...actual, getAlert: vi.fn(), raiseAlert: vi.fn() };
+});
 vi.mock("../lib/supabase/browser", () => ({ createClient: () => supabase }));
 
 function expand(flat: Record<string, string>): AbstractIntlMessages {
@@ -48,18 +56,36 @@ function renderFlow(locale = defaultLocale) {
 async function reachReview(description: string) {
   const user = userEvent.setup();
   await user.type(screen.getByLabelText(en["report.new.whatHappened"]), description);
+  await user.type(screen.getByLabelText(en["report.new.location"]), "Level 6");
   await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
   await user.click(screen.getByRole("button", { name: en["report.new.dangerNo"] }));
   await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
-  await user.type(screen.getByLabelText(en["report.new.location"]), "Level 6");
   await user.type(screen.getByLabelText(en["report.new.activity"]), "Material delivery");
   return user;
 }
 
+const sentAlert = {
+  id: "alert-id",
+  report_id: "draft-id",
+  human_ref: "SL-2026-00001",
+  description_original: "Loose edge protection",
+  raised_by: "reporter-id",
+  raised_at: "2026-08-22T08:00:00Z",
+  location_text: "Level 6",
+  acknowledged_by: null,
+  acknowledged_by_name: null,
+  acknowledged_at: null,
+  escalated_at: null,
+  resolution_note: null,
+};
+
 describe("ReportFlow", () => {
   beforeEach(() => {
     navigation.push.mockReset();
+    vi.mocked(createReportDraft).mockReset();
     vi.mocked(fileReport).mockReset();
+    vi.mocked(getAlert).mockReset();
+    vi.mocked(raiseAlert).mockReset();
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: vi.fn(() => "blob:test-photo"),
@@ -77,7 +103,15 @@ describe("ReportFlow", () => {
     const user = await reachReview("Loose edge protection");
     await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
     await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/${defaultLocale}/report/report-id`));
-    expect(fileReport).toHaveBeenCalledWith(expect.objectContaining({ description_original: "Loose edge protection", input_mode: "typed" }), "test-token", undefined);
+    expect(fileReport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description_original: "Loose edge protection",
+        input_mode: "typed",
+      }),
+      "test-token",
+      undefined,
+      undefined,
+    );
   });
 
   it("passes the selected photo and authenticated storage client to submission", async () => {
@@ -99,6 +133,7 @@ describe("ReportFlow", () => {
         userId: "reporter-id",
         caption: "Loose edge protection",
       }),
+      undefined,
     );
   });
 
@@ -109,6 +144,33 @@ describe("ReportFlow", () => {
     await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
     await screen.findByText(en["report.new.failureTitle"]);
     expect((screen.getByLabelText(en["report.new.whatHappened"]) as HTMLTextAreaElement).value).toBe("Keep this text");
+  });
+
+  it("raises an alert on the draft before submission and says sent, not seen", async () => {
+    vi.mocked(createReportDraft).mockResolvedValue({ id: "draft-id" });
+    vi.mocked(raiseAlert).mockResolvedValue(sentAlert);
+    renderFlow();
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByLabelText(en["report.new.whatHappened"]),
+      "Loose edge protection",
+    );
+    await user.type(screen.getByLabelText(en["report.new.location"]), "Level 6");
+    await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
+    await user.click(screen.getByRole("button", { name: en["report.new.dangerYes"] }));
+
+    expect(await screen.findByRole("heading", { name: en["alert.reporter.sent.title"] })).toBeTruthy();
+    expect(screen.queryByText(/has seen/i)).toBeNull();
+    expect(createReportDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description_original: "Loose edge protection",
+        location_text: "Level 6",
+        input_mode: "typed",
+      }),
+      "test-token",
+    );
+    expect(raiseAlert).toHaveBeenCalledWith("draft-id", "Level 6", "test-token");
+    expect(fileReport).not.toHaveBeenCalled();
   });
 
   it.each([[locales[0], en["report.new.captureTitle"]], [locales[1], zh["report.new.captureTitle"]]])("renders the capture page in %s", (locale, title) => {
