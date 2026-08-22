@@ -10,8 +10,14 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from app.api.deps import current_actor
-from app.domain.enums import InputMode, ReportStatus
+from app.domain.enums import InputMode, MediaPhase, ReportStatus
 from app.domain.transitions import TransitionError, allowed_targets
+from app.services.media_service import (
+    MediaError,
+    assert_report_readable,
+    get_signed_report_media,
+    register_report_media,
+)
 from app.services.report_service import Actor, create_report, get_report, get_timeline, transition_report
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -39,6 +45,15 @@ class TransitionRequest(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class RegisterMediaRequest(BaseModel):
+    """Describe an object already uploaded to private Supabase Storage."""
+
+    storage_path: str = Field(min_length=1, max_length=1024)
+    mime_type: str = Field(min_length=1, max_length=100)
+    phase: MediaPhase
+    caption: str | None = Field(default=None, max_length=500)
+
+
 def transition_error(error: TransitionError) -> HTTPException:
     """Map machine error codes to the HTTP contract without user-facing prose."""
     code_status = {
@@ -49,6 +64,30 @@ def transition_error(error: TransitionError) -> HTTPException:
         "reason_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
         "unknown_event": status.HTTP_400_BAD_REQUEST,
         "database_guard": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    }
+    return HTTPException(
+        code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        {"code": error.code, "message": error.message},
+    )
+
+
+def media_error(error: MediaError) -> HTTPException:
+    """Map media failures to stable machine-readable HTTP contracts."""
+    code_status = {
+        "report_not_found": status.HTTP_404_NOT_FOUND,
+        "report_forbidden": status.HTTP_403_FORBIDDEN,
+        "media_actor_not_permitted": status.HTTP_403_FORBIDDEN,
+        "media_phase_not_permitted": status.HTTP_403_FORBIDDEN,
+        "media_path_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "media_type_not_allowed": status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        "media_type_mismatch": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "media_too_large": status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        "media_object_not_found": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "media_object_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "media_already_registered": status.HTTP_409_CONFLICT,
+        "storage_not_configured": status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "storage_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
+        "storage_sign_failed": status.HTTP_502_BAD_GATEWAY,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -82,12 +121,39 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
     report = await get_report(report_id)
     if report is None:
         raise HTTPException(404, {"code": "report_not_found", "message": "report does not exist"})
+    try:
+        assert_report_readable(report, actor)
+        media = await get_signed_report_media(report_id)
+    except MediaError as error:
+        raise media_error(error) from error
     source = ReportStatus(report["status"])
     result = dict(report)
+    result["media"] = media
     result["available_transitions"] = [
         target.value for target in allowed_targets(source, actor.actor_type, actor.role)
     ]
     return cast(dict[str, object], jsonable_encoder(result))
+
+
+@router.post("/{report_id}/media", status_code=status.HTTP_201_CREATED)
+async def post_report_media(
+    report_id: UUID,
+    payload: RegisterMediaRequest,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Register one private object only after checking its stored metadata."""
+    try:
+        media = await register_report_media(
+            report_id,
+            actor,
+            storage_path=payload.storage_path,
+            mime_type=payload.mime_type,
+            phase=payload.phase,
+            caption=payload.caption,
+        )
+    except MediaError as error:
+        raise media_error(error) from error
+    return cast(dict[str, object], jsonable_encoder(dict(media)))
 
 
 @router.get("/{report_id}/timeline")

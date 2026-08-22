@@ -69,9 +69,10 @@ export function ReportFlow() {
     setFailed(false);
 
     try {
+      const supabase = createClient();
       const {
         data: { session },
-      } = await createClient().auth.getSession();
+      } = await supabase.auth.getSession();
       if (!session) {
         throw new Error("session_required");
       }
@@ -88,6 +89,14 @@ export function ReportFlow() {
           input_mode: "typed",
         },
         session.access_token,
+        photo
+          ? {
+              client: supabase,
+              file: photo,
+              userId: session.user.id,
+              caption: description.trim(),
+            }
+          : undefined,
       );
       try {
         sessionStorage.setItem(

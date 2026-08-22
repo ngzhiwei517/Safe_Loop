@@ -12,9 +12,22 @@ import { fileReport } from "../lib/reports";
 import { reportStatus } from "../lib/stateMachine";
 
 const navigation = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn() }));
+const supabase = vi.hoisted(() => ({
+  auth: {
+    getSession: async () => ({
+      data: {
+        session: {
+          access_token: "test-token",
+          user: { id: "reporter-id" },
+        },
+      },
+    }),
+  },
+  storage: {},
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 vi.mock("../lib/reports", () => ({ fileReport: vi.fn() }));
-vi.mock("../lib/supabase/browser", () => ({ createClient: () => ({ auth: { getSession: async () => ({ data: { session: { access_token: "test-token" } } }) } }) }));
+vi.mock("../lib/supabase/browser", () => ({ createClient: () => supabase }));
 
 function expand(flat: Record<string, string>): AbstractIntlMessages {
   const result: AbstractIntlMessages = {};
@@ -44,7 +57,18 @@ async function reachReview(description: string) {
 }
 
 describe("ReportFlow", () => {
-  beforeEach(() => { navigation.push.mockReset(); vi.mocked(fileReport).mockReset(); });
+  beforeEach(() => {
+    navigation.push.mockReset();
+    vi.mocked(fileReport).mockReset();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:test-photo"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+  });
   afterEach(cleanup);
 
   it("creates a draft, submits it, and redirects", async () => {
@@ -52,8 +76,30 @@ describe("ReportFlow", () => {
     renderFlow();
     const user = await reachReview("Loose edge protection");
     await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
-    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/en/report/report-id"));
-    expect(fileReport).toHaveBeenCalledWith(expect.objectContaining({ description_original: "Loose edge protection", input_mode: "typed" }), "test-token");
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/${defaultLocale}/report/report-id`));
+    expect(fileReport).toHaveBeenCalledWith(expect.objectContaining({ description_original: "Loose edge protection", input_mode: "typed" }), "test-token", undefined);
+  });
+
+  it("passes the selected photo and authenticated storage client to submission", async () => {
+    vi.mocked(fileReport).mockResolvedValue({ id: "report-id", human_ref: "SL-2026-00001", status: reportStatus.submitted });
+    renderFlow();
+    const file = new File(["photo"], "hazard.jpg", { type: "image/jpeg" });
+    const inputElement = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(inputElement).not.toBeNull();
+    await userEvent.upload(inputElement!, file);
+    const user = await reachReview("Loose edge protection");
+    await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/${defaultLocale}/report/report-id`));
+    expect(fileReport).toHaveBeenCalledWith(
+      expect.any(Object),
+      "test-token",
+      expect.objectContaining({
+        client: supabase,
+        file,
+        userId: "reporter-id",
+        caption: "Loose edge protection",
+      }),
+    );
   });
 
   it("keeps typed input when submission fails", async () => {

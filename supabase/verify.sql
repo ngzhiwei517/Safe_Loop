@@ -4,6 +4,22 @@ begin;
 create temporary table verify_results (name text primary key, passed boolean not null);
 create temporary table verify_report (id uuid not null);
 
+do $$
+declare
+  bucket_ok boolean := false;
+begin
+  if to_regclass('storage.buckets') is not null then
+    execute $check$
+      select public is false
+        and file_size_limit = 10485760
+        and allowed_mime_types @> array['image/jpeg', 'image/png', 'image/webp']::text[]
+        and array['image/jpeg', 'image/png', 'image/webp']::text[] @> allowed_mime_types
+      from storage.buckets where id = 'report-media'
+    $check$ into bucket_ok;
+  end if;
+  insert into verify_results values ('report_media_private_bucket', coalesce(bucket_ok, false));
+end $$;
+
 insert into reports (reporter_id, description_original)
 values ('00000000-0000-0000-0000-000000000001', 'verification fixture');
 insert into verify_report select id from reports order by created_at desc limit 1;
