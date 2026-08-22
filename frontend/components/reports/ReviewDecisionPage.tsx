@@ -9,6 +9,7 @@ import { ApiError } from "../../lib/api";
 import {
   defaultLocale,
   formatDateTime,
+  formatNumber,
   isLocale,
   locales,
 } from "../../lib/locales";
@@ -24,6 +25,7 @@ import {
   type Urgency,
 } from "../../lib/reports";
 import { createClient } from "../../lib/supabase/browser";
+import { AiBlock } from "../ui/AiBlock";
 import { Banner } from "../ui/Banner";
 import {
   DestructiveButton,
@@ -55,6 +57,22 @@ const reviewErrorKeys: Record<string, string> = {
   assignee_not_responsible: "error.assignee_not_responsible",
   active_assignment_exists: "error.active_assignment_exists",
   report_not_found: "error.report_not_found",
+};
+
+const validationErrorKeys: Record<string, string> = {
+  observed_facts_required: "review.draft.validation.observedFactsRequired",
+  assumption_in_observed_facts: "review.draft.validation.assumptionInFacts",
+  proposed_urgency_required: "review.draft.validation.urgencyRequired",
+  confidence_below_threshold: "review.draft.validation.confidenceLow",
+  escalation_reason_required: "review.draft.validation.escalationReasonRequired",
+  suggested_action_citation_required: "review.draft.validation.actionCitationRequired",
+};
+
+type CorrectionField = "category" | "urgency" | "action";
+type CorrectionDiff = {
+  field: CorrectionField;
+  before: string;
+  after: string;
 };
 
 function isReviewTransition(
@@ -111,6 +129,7 @@ export function ReviewDecisionPage({
   const [assigneeId, setAssigneeId] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingApproval, setConfirmingApproval] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -145,36 +164,54 @@ export function ReviewDecisionPage({
   }, [load]);
 
   function choose(transition: ReviewTransition) {
+    const draft = report?.latest_draft;
     setActive(transition);
     setReason("");
-    setCorrectedCategory("");
-    setCorrectedUrgency("");
-    setCorrectedAction("");
+    setCorrectedCategory(draft?.proposed_category ?? "");
+    setCorrectedUrgency(draft?.proposed_urgency ?? "");
+    setCorrectedAction(draft?.suggested_action ?? "");
     setCorrectionReason("");
     setAssigneeId("");
     setDueAt("");
+    setConfirmingApproval(false);
     setErrorKey(null);
     setSaved(false);
   }
 
-  const hasCorrections = Boolean(
-    correctedCategory.trim() || correctedUrgency || correctedAction.trim(),
-  );
+  const baselineCategory = report?.latest_draft?.proposed_category?.trim() ?? "";
+  const baselineUrgency = report?.latest_draft?.proposed_urgency ?? "";
+  const baselineAction = report?.latest_draft?.suggested_action?.trim() ?? "";
+  const categoryValue = correctedCategory.trim();
+  const actionValue = correctedAction.trim();
+  const categoryChanged = Boolean(categoryValue && categoryValue !== baselineCategory);
+  const urgencyChanged = Boolean(correctedUrgency && correctedUrgency !== baselineUrgency);
+  const actionChanged = Boolean(actionValue && actionValue !== baselineAction);
+  const correctionDiffs: CorrectionDiff[] = [
+    ...(categoryChanged
+      ? [{ field: "category" as const, before: baselineCategory, after: categoryValue }]
+      : []),
+    ...(urgencyChanged
+      ? [{ field: "urgency" as const, before: baselineUrgency, after: correctedUrgency }]
+      : []),
+    ...(actionChanged
+      ? [{ field: "action" as const, before: baselineAction, after: actionValue }]
+      : []),
+  ];
+  const hasCorrections = correctionDiffs.length > 0;
   const reasonReady = !active?.requires_reason || reason.trim().length > 0;
   const correctionReady = !hasCorrections || correctionReason.trim().length > 0;
   const assignmentReady =
     active?.review_decision !== "approve" ||
-    Boolean(
-      correctedAction.trim() &&
-        correctionReason.trim() &&
-        assigneeId.trim() &&
-        dueAt,
-    );
+    Boolean(actionValue && assigneeId.trim() && dueAt);
   const ready = Boolean(active && reasonReady && correctionReady && assignmentReady);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!active || !ready) return;
+    if (active.review_decision === "approve" && !confirmingApproval) {
+      setConfirmingApproval(true);
+      return;
+    }
     setSubmitting(true);
     setErrorKey(null);
     setSaved(false);
@@ -190,9 +227,9 @@ export function ReviewDecisionPage({
           decision: active.review_decision,
           target: active.target,
           reason: active.requires_reason ? reason.trim() : undefined,
-          corrected_category: correctedCategory.trim() || undefined,
-          corrected_urgency: correctedUrgency || undefined,
-          corrected_action: correctedAction.trim() || undefined,
+          corrected_category: categoryChanged ? categoryValue : undefined,
+          corrected_urgency: urgencyChanged ? correctedUrgency || undefined : undefined,
+          corrected_action: actionChanged ? actionValue : undefined,
           correction_reason: hasCorrections
             ? correctionReason.trim()
             : undefined,
@@ -206,6 +243,7 @@ export function ReviewDecisionPage({
         session.access_token,
       );
       setActive(null);
+      setConfirmingApproval(false);
       setSaved(true);
       await load();
     } catch (error) {
@@ -251,6 +289,10 @@ export function ReviewDecisionPage({
       : undefined,
     status: entry.target ?? undefined,
   }));
+  const correctionValue = (diff: CorrectionDiff, value: string) => {
+    if (!value) return t("review.detail.diffNotSet");
+    return diff.field === "urgency" ? t(`urgency.${value}`) : value;
+  };
 
   return (
     <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 pb-10 text-ink">
@@ -372,6 +414,66 @@ export function ReviewDecisionPage({
           </dl>
         </Card>
 
+        {report.latest_draft && (
+          <AiBlock
+            marker={t("review.draft.marker")}
+            observedLabel={t("review.draft.observed")}
+            assumptionLabel={t("review.draft.assumptionNotObserved")}
+            missingLabel={t("review.draft.missing")}
+            emptyLabel={t("review.draft.none")}
+            observedFacts={report.latest_draft.observed_facts}
+            assumptions={report.latest_draft.assumptions}
+            missingInformation={report.latest_draft.missing_information}
+            validationTitle={t("review.draft.validationFailed")}
+            validationErrors={report.latest_draft.validation_errors.map((code) =>
+              t(validationErrorKeys[code] ?? "review.draft.validation.unknown"),
+            )}
+          >
+            <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-base">
+              {report.latest_draft.proposed_category && (
+                <div>
+                  <dt className="text-sm font-bold text-inkMuted">
+                    {t("review.draft.category")}
+                  </dt>
+                  <dd>{report.latest_draft.proposed_category}</dd>
+                </div>
+              )}
+              {report.latest_draft.proposed_urgency && (
+                <div>
+                  <dt className="text-sm font-bold text-inkMuted">
+                    {t("review.draft.urgency")}
+                  </dt>
+                  <dd>{t(`urgency.${report.latest_draft.proposed_urgency}`)}</dd>
+                </div>
+              )}
+              {report.latest_draft.suggested_owner_role && (
+                <div>
+                  <dt className="text-sm font-bold text-inkMuted">
+                    {t("review.draft.owner")}
+                  </dt>
+                  <dd>{report.latest_draft.suggested_owner_role}</dd>
+                </div>
+              )}
+              {report.latest_draft.suggested_action && (
+                <div>
+                  <dt className="text-sm font-bold text-inkMuted">
+                    {t("review.draft.action")}
+                  </dt>
+                  <dd>{report.latest_draft.suggested_action}</dd>
+                </div>
+              )}
+              {report.latest_draft.confidence !== null && (
+                <div>
+                  <dt className="text-sm font-bold text-inkMuted">
+                    {t("review.draft.confidence")}
+                  </dt>
+                  <dd>{formatNumber(report.latest_draft.confidence, locale)}</dd>
+                </div>
+              )}
+            </dl>
+          </AiBlock>
+        )}
+
         <Card className="space-y-4">
           <h2 className="text-xl font-bold">{t("report.detail.timeline")}</h2>
           {timelineEvents.length > 0 ? (
@@ -418,7 +520,10 @@ export function ReviewDecisionPage({
                   rows={3}
                   label={t("review.detail.reason")}
                   value={reason}
-                  onChange={(event) => setReason(event.target.value)}
+                  onChange={(event) => {
+                    setReason(event.target.value);
+                    setConfirmingApproval(false);
+                  }}
                   error={
                     reason.length > 0 && reason.trim().length === 0
                       ? t("error.reason_required")
@@ -435,16 +540,20 @@ export function ReviewDecisionPage({
                   <Field
                     label={t("review.detail.correctedCategory")}
                     value={correctedCategory}
-                    onChange={(event) => setCorrectedCategory(event.target.value)}
+                    onChange={(event) => {
+                      setCorrectedCategory(event.target.value);
+                      setConfirmingApproval(false);
+                    }}
                   />
                   <label className="block text-sm font-bold text-inkMuted">
                     <span>{t("review.detail.correctedUrgency")}</span>
                     <select
                       className="mt-1 min-h-[52px] w-full rounded-control border border-border bg-surface px-4 text-base text-ink outline-none focus:border-primaryStrong focus:ring-2 focus:ring-primaryTint"
                       value={correctedUrgency}
-                      onChange={(event) =>
-                        setCorrectedUrgency(event.target.value as Urgency | "")
-                      }
+                      onChange={(event) => {
+                        setCorrectedUrgency(event.target.value as Urgency | "");
+                        setConfirmingApproval(false);
+                      }}
                     >
                       <option value="">{t("review.detail.noCorrection")}</option>
                       {urgencyLevels.map((urgency) => (
@@ -458,14 +567,20 @@ export function ReviewDecisionPage({
                     rows={3}
                     label={t("review.detail.correctedAction")}
                     value={correctedAction}
-                    onChange={(event) => setCorrectedAction(event.target.value)}
+                    onChange={(event) => {
+                      setCorrectedAction(event.target.value);
+                      setConfirmingApproval(false);
+                    }}
                   />
                   {hasCorrections && (
                     <Field
                       rows={3}
                       label={t("review.detail.correctionReason")}
                       value={correctionReason}
-                      onChange={(event) => setCorrectionReason(event.target.value)}
+                      onChange={(event) => {
+                        setCorrectionReason(event.target.value);
+                        setConfirmingApproval(false);
+                      }}
                       error={
                         correctionReason.length > 0 &&
                         correctionReason.trim().length === 0
@@ -488,15 +603,62 @@ export function ReviewDecisionPage({
                   <Field
                     label={t("review.detail.assigneeId")}
                     value={assigneeId}
-                    onChange={(event) => setAssigneeId(event.target.value)}
+                    onChange={(event) => {
+                      setAssigneeId(event.target.value);
+                      setConfirmingApproval(false);
+                    }}
                   />
                   <Field
                     label={t("review.detail.dueAt")}
                     type="datetime-local"
                     value={dueAt}
-                    onChange={(event) => setDueAt(event.target.value)}
+                    onChange={(event) => {
+                      setDueAt(event.target.value);
+                      setConfirmingApproval(false);
+                    }}
                   />
                 </div>
+              )}
+
+              {active.review_decision === "approve" && confirmingApproval && (
+                <section
+                  className="rounded-control border border-primary bg-primaryTint p-4"
+                  aria-label={t("review.detail.diffTitle")}
+                >
+                  <h3 className="text-base font-bold text-primaryStrong">
+                    {t("review.detail.diffTitle")}
+                  </h3>
+                  <p className="mt-1 text-sm text-inkMuted">
+                    {t("review.detail.diffHelp")}
+                  </p>
+                  {correctionDiffs.length === 0 ? (
+                    <p className="mt-3 text-base font-bold text-ink">
+                      {t("review.detail.diffNoChanges")}
+                    </p>
+                  ) : (
+                    <dl className="mt-3 space-y-3">
+                      {correctionDiffs.map((diff) => (
+                        <div className="rounded-control bg-surface p-3" key={diff.field}>
+                          <dt className="text-sm font-bold text-ink">
+                            {t(`review.detail.diffField.${diff.field}`)}
+                          </dt>
+                          <dd className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                            <span className="text-inkMuted">
+                              {t("review.detail.diffBefore", {
+                                value: correctionValue(diff, diff.before),
+                              })}
+                            </span>
+                            <span className="font-bold text-ink">
+                              {t("review.detail.diffAfter", {
+                                value: correctionValue(diff, diff.after),
+                              })}
+                            </span>
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </section>
               )}
 
               <div className="grid grid-cols-2 gap-3">
@@ -504,7 +666,10 @@ export function ReviewDecisionPage({
                   className="min-h-14"
                   label={t("review.detail.cancel")}
                   disabled={submitting}
-                  onClick={() => setActive(null)}
+                  onClick={() => {
+                    setActive(null);
+                    setConfirmingApproval(false);
+                  }}
                   type="button"
                 />
                 <DecisionButton
@@ -512,7 +677,11 @@ export function ReviewDecisionPage({
                   label={
                     submitting
                       ? t("review.detail.submitting")
-                      : t(`action.${active.event}`)
+                      : active.review_decision === "approve"
+                        ? confirmingApproval
+                          ? t("review.detail.confirmApproval")
+                          : t("review.detail.reviewApproval")
+                        : t(`action.${active.event}`)
                   }
                   disabled={!ready || submitting}
                   type="submit"

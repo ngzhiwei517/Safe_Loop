@@ -60,6 +60,25 @@ export type ReviewResult = {
   corrective_action_id: string | null;
 };
 
+export type AiDraft = {
+  id: string;
+  version: number;
+  observed_facts: string[];
+  assumptions: string[];
+  missing_information: string[];
+  proposed_category: string | null;
+  proposed_urgency: Urgency | null;
+  suggested_owner_role: string | null;
+  suggested_action: string | null;
+  confidence: number | null;
+  needs_escalation: boolean;
+  escalation_reason: string | null;
+  citations: Record<string, unknown>[];
+  validation: "valid" | "invalid" | null;
+  validation_errors: string[];
+  created_at: string;
+};
+
 export type ReportDetail = {
   id: string;
   human_ref: string;
@@ -74,6 +93,7 @@ export type ReportDetail = {
   grid_ref: string | null;
   created_at: string;
   media: ReportMedia[];
+  latest_draft: AiDraft | null;
   available_transitions: AvailableTransition[];
 };
 

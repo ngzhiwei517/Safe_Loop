@@ -84,6 +84,27 @@ const report: ReportDetail = {
       signed_url_expires_at: "2026-08-22T01:10:00Z",
     },
   ],
+  latest_draft: {
+    id: "draft-id",
+    version: 1,
+    observed_facts: [
+      "The Level 6 edge has no guardrail.",
+      "The opening is beside material delivery work.",
+    ],
+    assumptions: ["The formwork crew owns this area."],
+    missing_information: ["Whether work is scheduled below this level"],
+    proposed_category: "work_at_height",
+    proposed_urgency: "high",
+    suggested_owner_role: "responsible",
+    suggested_action: "Install secured guardrails before work resumes.",
+    confidence: 0.82,
+    needs_escalation: false,
+    escalation_reason: null,
+    citations: [],
+    validation: "valid",
+    validation_errors: [],
+    created_at: "2026-08-22T01:01:00Z",
+  },
   available_transitions: [
     {
       event: "reject",
@@ -163,6 +184,12 @@ describe("ReviewDecisionPage", () => {
     expect(screen.getByRole("button", { name: en["action.approve_action"] })).toBeTruthy();
     expect(screen.getByRole("button", { name: en["action.request_info"] })).toBeTruthy();
     expect(screen.getByRole("button", { name: en["action.escalate"] })).toBeTruthy();
+    expect(screen.getByText(en["review.draft.marker"])).toBeTruthy();
+    expect(screen.getByText(en["review.draft.assumptionNotObserved"])).toBeTruthy();
+    expect(screen.getByText(report.latest_draft!.observed_facts[0])).toBeTruthy();
+    const assumption = screen.getByText(report.latest_draft!.assumptions[0]);
+    expect(assumption.closest(".italic")).not.toBeNull();
+    expect(screen.getByText(report.latest_draft!.missing_information[0])).toBeTruthy();
   });
 
   it("does not invent a decision the server omitted", async () => {
@@ -224,9 +251,24 @@ describe("ReviewDecisionPage", () => {
       await screen.findByRole("button", { name: en["action.approve_action"] }),
     );
     await user.click(screen.getByText(en["review.detail.corrections"]));
+    const action = screen.getByLabelText<HTMLTextAreaElement>(
+      en["review.detail.correctedAction"],
+    );
+    expect(action.value).toBe(report.latest_draft!.suggested_action);
+    expect(
+      screen.getByLabelText<HTMLInputElement>(
+        en["review.detail.correctedCategory"],
+      ).value,
+    ).toBe(report.latest_draft!.proposed_category);
+    expect(
+      screen.getByLabelText<HTMLSelectElement>(
+        en["review.detail.correctedUrgency"],
+      ).value,
+    ).toBe(report.latest_draft!.proposed_urgency);
+    await user.clear(action);
     await user.type(
-      screen.getByLabelText(en["review.detail.correctedAction"]),
-      "Install secured guardrails.",
+      action,
+      "Install anchored guardrails before work resumes.",
     );
     await user.type(
       screen.getByLabelText(en["review.detail.correctionReason"]),
@@ -240,11 +282,32 @@ describe("ReviewDecisionPage", () => {
       target: { value: "2026-08-25T12:00" },
     });
 
-    const submit = screen.getByRole<HTMLButtonElement>("button", {
-      name: en["action.approve_action"],
+    const review = screen.getByRole<HTMLButtonElement>("button", {
+      name: en["review.detail.reviewApproval"],
     });
-    expect(submit.disabled).toBe(false);
-    await user.click(submit);
+    expect(review.disabled).toBe(false);
+    await user.click(review);
+
+    expect(reviewReport).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        en["review.detail.diffBefore"].replace(
+          "{value}",
+          report.latest_draft!.suggested_action!,
+        ),
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        en["review.detail.diffAfter"].replace(
+          "{value}",
+          "Install anchored guardrails before work resumes.",
+        ),
+      ),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: en["review.detail.confirmApproval"] }),
+    );
 
     await waitFor(() =>
       expect(reviewReport).toHaveBeenCalledWith(
@@ -252,7 +315,7 @@ describe("ReviewDecisionPage", () => {
         expect.objectContaining({
           decision: "approve",
           target: reportStatus.action_assigned,
-          corrected_action: "Install secured guardrails.",
+          corrected_action: "Install anchored guardrails before work resumes.",
           correction_reason: "The action was missing.",
           assignee_id: "00000000-0000-0000-0000-000000000004",
           due_at: expect.stringContaining("2026-08-25T"),
@@ -260,6 +323,41 @@ describe("ReviewDecisionPage", () => {
         "test-token",
       ),
     );
+    const submitted = vi.mocked(reviewReport).mock.calls[0][1];
+    expect(submitted.corrected_category).toBeUndefined();
+    expect(submitted.corrected_urgency).toBeUndefined();
+  });
+
+  it("approves an unchanged draft only after showing an empty diff", async () => {
+    const user = userEvent.setup();
+    renderReview();
+    await user.click(
+      await screen.findByRole("button", { name: en["action.approve_action"] }),
+    );
+    await user.type(
+      screen.getByLabelText(en["review.detail.assigneeId"]),
+      "00000000-0000-0000-0000-000000000004",
+    );
+    fireEvent.change(screen.getByLabelText(en["review.detail.dueAt"]), {
+      target: { value: "2026-08-25T12:00" },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: en["review.detail.reviewApproval"] }),
+    );
+
+    expect(screen.getByText(en["review.detail.diffNoChanges"])).toBeTruthy();
+    expect(reviewReport).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: en["review.detail.confirmApproval"] }),
+    );
+
+    await waitFor(() => expect(reviewReport).toHaveBeenCalledTimes(1));
+    const submitted = vi.mocked(reviewReport).mock.calls[0][1];
+    expect(submitted.corrected_category).toBeUndefined();
+    expect(submitted.corrected_urgency).toBeUndefined();
+    expect(submitted.corrected_action).toBeUndefined();
+    expect(submitted.correction_reason).toBeUndefined();
   });
 
   it("renders the review context and decisions in Simplified Chinese", async () => {
@@ -267,6 +365,26 @@ describe("ReviewDecisionPage", () => {
 
     expect(await screen.findByText(zh["review.detail.report"])).toBeTruthy();
     expect(screen.getByText(zh["timeline.event.queue_for_review"])).toBeTruthy();
+    expect(screen.getByText(zh["review.draft.assumptionNotObserved"])).toBeTruthy();
     expect(screen.getByRole("button", { name: zh["action.reject"] })).toBeTruthy();
+  });
+
+  it("localises validation error codes instead of showing machine codes", async () => {
+    vi.mocked(getReport).mockResolvedValue({
+      ...report,
+      latest_draft: {
+        ...report.latest_draft!,
+        validation: "invalid",
+        validation_errors: ["confidence_below_threshold"],
+      },
+    });
+
+    renderReview(locales[1]);
+
+    expect(await screen.findByText(zh["review.draft.validationFailed"])).toBeTruthy();
+    expect(
+      screen.getByText(zh["review.draft.validation.confidenceLow"]),
+    ).toBeTruthy();
+    expect(screen.queryByText("confidence_below_threshold")).toBeNull();
   });
 });

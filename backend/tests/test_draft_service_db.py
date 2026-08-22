@@ -14,7 +14,7 @@ import pytest
 from app.ai.intake_graph import DraftEnvelope, DraftPayload
 from app.db import close_pool, connection, init_pool
 from app.services.draft_service import append_draft
-from app.services.report_service import create_report
+from app.services.report_service import create_report, get_report
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not set")
@@ -140,5 +140,11 @@ def test_two_runs_append_versions_one_and_two() -> None:
         assert json.loads(rows[1][4]) == []
         assert rows[0][5:] == (7, 21, 34)
         assert rows[1][5:] == (9, 21, 34)
+
+        report = run(get_report(report_id))
+        assert report is not None
+        latest_draft = json.loads(report["latest_draft"])
+        assert latest_draft["version"] == 2
+        assert latest_draft["validation_errors"] == []
     finally:
         run(cleanup(report_id))

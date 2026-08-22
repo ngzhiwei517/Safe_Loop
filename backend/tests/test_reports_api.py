@@ -69,6 +69,8 @@ def test_available_transitions_differ_without_client_role_logic(
     )
 
     assert reporter_result["available_transitions"] == []
+    assert reporter_result["latest_draft"] is None
+    assert reviewer_result["latest_draft"] is None
     assert reviewer_result["available_transitions"] == [
         {
             "event": "reject",
@@ -95,6 +97,49 @@ def test_available_transitions_differ_without_client_role_logic(
             "review_decision": "approve",
         },
     ]
+
+
+def test_report_detail_decodes_latest_draft_and_validation_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_report(_: UUID) -> dict[str, object]:
+        return {
+            "id": REPORT_ID,
+            "reporter_id": REPORTER_ID,
+            "status": "under_review",
+            "latest_draft": json.dumps(
+                {
+                    "version": 2,
+                    "observed_facts": ["The Level 6 edge has no guardrail."],
+                    "assumptions": ["The formwork crew owns the area."],
+                    "missing_information": ["Work schedule below"],
+                    "proposed_category": "work_at_height",
+                    "proposed_urgency": "high",
+                    "suggested_action": None,
+                    "validation": "invalid",
+                    "validation_errors": ["confidence_below_threshold"],
+                }
+            ),
+        }
+
+    async def empty_rows(_: UUID) -> list[dict[str, object]]:
+        return []
+
+    monkeypatch.setattr(reports_api, "get_report", fake_report)
+    monkeypatch.setattr(reports_api, "get_signed_report_media", empty_rows)
+    monkeypatch.setattr(reports_api, "list_report_clarifications", empty_rows)
+
+    result = asyncio.run(
+        reports_api.report_detail(
+            REPORT_ID,
+            Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+        )
+    )
+
+    draft = result["latest_draft"]
+    assert isinstance(draft, dict)
+    assert draft["version"] == 2
+    assert draft["validation_errors"] == ["confidence_below_threshold"]
 
 
 def test_review_endpoint_passes_the_atomic_payload_to_the_service(

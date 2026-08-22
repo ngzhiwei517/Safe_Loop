@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from typing import Any, cast
 from uuid import UUID
 
@@ -317,6 +318,11 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
         raise media_error(error) from error
     source = ReportStatus(report["status"])
     result = dict(report)
+    latest_draft = result.get("latest_draft")
+    if isinstance(latest_draft, str):
+        result["latest_draft"] = json.loads(latest_draft)
+    elif latest_draft is None:
+        result["latest_draft"] = None
     result["media"] = media
     result["clarifications"] = [dict(row) for row in clarifications]
     available: list[dict[str, object]] = []

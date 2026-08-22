@@ -368,9 +368,40 @@ async def update_draft_report(
 
 
 async def get_report(report_id: UUID) -> asyncpg.Record | None:
-    """Read one report without introducing a second state-writing path."""
+    """Read one report with only the latest immutable AI draft attached."""
     async with connection() as conn:
-        return await conn.fetchrow("SELECT * FROM reports WHERE id = $1", report_id)
+        return await conn.fetchrow(
+            """
+            select r.*, latest.latest_draft
+            from reports r
+            left join lateral (
+              select jsonb_build_object(
+                'id', d.id,
+                'version', d.version,
+                'observed_facts', d.observed_facts,
+                'assumptions', d.assumptions,
+                'missing_information', d.missing_information,
+                'proposed_category', d.proposed_category,
+                'proposed_urgency', d.proposed_urgency::text,
+                'suggested_owner_role', d.suggested_owner_role::text,
+                'suggested_action', d.suggested_action,
+                'confidence', d.confidence,
+                'needs_escalation', d.needs_escalation,
+                'escalation_reason', d.escalation_reason,
+                'citations', d.citations,
+                'validation', d.validation::text,
+                'validation_errors', d.validation_errors,
+                'created_at', d.created_at
+              ) as latest_draft
+              from ai_drafts d
+              where d.report_id = r.id
+              order by d.version desc
+              limit 1
+            ) latest on true
+            where r.id = $1
+            """,
+            report_id,
+        )
 
 
 async def get_timeline(report_id: UUID) -> list[asyncpg.Record]:

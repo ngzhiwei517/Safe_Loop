@@ -72,6 +72,7 @@ function reportWith(
         signed_url_expires_at: "2026-08-22T01:10:00Z",
       },
     ],
+    latest_draft: null,
     available_transitions: availableTransitions,
   };
 }
