@@ -10,6 +10,7 @@ import {
   PlusIcon,
   ShieldExclamationIcon,
 } from "@heroicons/react/24/outline";
+import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import React, { ChangeEvent, useEffect, useState } from "react";
@@ -65,6 +66,7 @@ export function ReportFlow() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
+  const urgentAlertId = urgentAlert?.id;
 
   useEffect(() => {
     if (!photo) {
@@ -78,7 +80,8 @@ export function ReportFlow() {
   }, [photo]);
 
   useEffect(() => {
-    if (step !== "urgent" || urgentAlert === null) return;
+    if (step !== "urgent" || urgentAlertId === undefined) return;
+    const alertId = urgentAlertId;
     let active = true;
 
     async function refreshAlert() {
@@ -87,7 +90,7 @@ export function ReportFlow() {
           data: { session },
         } = await createClient().auth.getSession();
         if (!session) return;
-        const refreshed = await getAlert(urgentAlert!.id, session.access_token);
+        const refreshed = await getAlert(alertId, session.access_token);
         if (active) setUrgentAlert(refreshed);
       } catch {
         // The last confirmed state remains visible until the next poll succeeds.
@@ -99,7 +102,7 @@ export function ReportFlow() {
       active = false;
       window.clearInterval(interval);
     };
-  }, [step, urgentAlert?.id]);
+  }, [step, urgentAlertId]);
 
   function selectPhoto(event: ChangeEvent<HTMLInputElement>) {
     setPhoto(event.target.files?.[0] ?? null);
@@ -281,9 +284,12 @@ export function ReportFlow() {
             <label className="grid min-h-[320px] cursor-pointer place-items-center rounded-card border border-dashed border-border bg-surfaceSunken text-center">
               <span className="flex w-full flex-col items-center gap-2">
                 {photoUrl ? (
-                  <img
+                  <Image
                     src={photoUrl}
                     alt={t("report.new.changePhoto")}
+                    width={1600}
+                    height={900}
+                    unoptimized
                     className="h-48 w-full rounded-tile object-cover"
                   />
                 ) : (
@@ -411,10 +417,13 @@ export function ReportFlow() {
         <div className="space-y-4">
           {photoUrl && (
             <div className="flex gap-2.5">
-              <img
+              <Image
                 className="h-32 min-w-0 flex-[5] rounded-tile object-cover"
                 src={photoUrl}
                 alt={t("report.new.changePhoto")}
+                width={320}
+                height={256}
+                unoptimized
               />
               <button
                 type="button"

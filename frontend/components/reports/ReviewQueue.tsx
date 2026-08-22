@@ -11,6 +11,7 @@ import {
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
+import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
@@ -251,11 +252,13 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
                 <Card className={`flex gap-4 ${urgencyBorder[report.urgency]}`}>
                   <div className="h-20 w-20 shrink-0 overflow-hidden rounded-tile bg-surfaceSunken">
                     {report.thumbnail_url ? (
-                      <img
+                      <Image
                         className="h-full w-full object-cover"
                         src={report.thumbnail_url}
                         alt={report.thumbnail_caption?.trim() || t("review.queue.photoAlt")}
-                        loading="lazy"
+                        width={80}
+                        height={80}
+                        unoptimized
                       />
                     ) : (
                       <span className="grid h-full w-full place-items-center text-inkMuted" aria-label={t("review.queue.noPhoto")}>

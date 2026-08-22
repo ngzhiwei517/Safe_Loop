@@ -22,8 +22,30 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: frontend/package.json
-      - run: npm install
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r ../backend/requirements.txt
+      - name: Start state-machine API
+        run: |
+          python -m uvicorn app.main:app --app-dir ../backend --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/safeloop-backend.log" 2>&1 &
+          python - <<'PY'
+          import time
+          from urllib.request import urlopen
+
+          for attempt in range(30):
+              try:
+                  with urlopen("http://127.0.0.1:8000/state-machine", timeout=1) as response:
+                      if response.status == 200:
+                          break
+              except OSError:
+                  if attempt == 29:
+                      raise
+                  time.sleep(1)
+          PY
+      - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run build
       - run: npm run tsc
       - run: npm run test

@@ -15,10 +15,12 @@ from io import BytesIO
 import asyncpg
 import httpx
 
+from app.ai.provider import AIProvider
 from app.config import get_settings
 from app.db import connection
 from app.domain.enums import ActorType, Role
 from app.rag.chunker import DOCX_MIME_TYPE, PDF_MIME_TYPE, ChunkingError, chunk_document
+from app.rag.embeddings import embed_texts_batched, vector_literal
 from app.services.report_service import Actor
 
 DocumentStorageUploader = Callable[[str, bytes, str], Awaitable[None]]
@@ -131,6 +133,7 @@ async def ingest_document(
     claimed_mime_type: str,
     content: bytes,
     storage_uploader: DocumentStorageUploader | None = None,
+    embedding_provider: AIProvider | None = None,
 ) -> asyncpg.Record:
     """Extract first, then atomically replace metadata and chunks for one revision."""
     profile_id = _assert_corpus_actor(actor)
@@ -147,6 +150,10 @@ async def ingest_document(
         chunks = chunk_document(content, mime_type)
     except ChunkingError as error:
         raise DocumentError(error.code, error.message) from error
+    embeddings = await embed_texts_batched(
+        [chunk.content for chunk in chunks],
+        provider=embedding_provider,
+    )
     storage_path = _storage_path(clean_ref, clean_revision, mime_type)
     active_uploader = storage_uploader or upload_document_source
     await active_uploader(storage_path, content, mime_type)
@@ -183,12 +190,19 @@ async def ingest_document(
             await conn.executemany(
                 """
                 insert into document_chunks (
-                  document_id, chunk_index, section, page, content
+                  document_id, chunk_index, section, page, content, embedding
                 )
-                values ($1, $2, $3, $4, $5)
+                values ($1, $2, $3, $4, $5, $6::vector(1536))
                 """,
                 [
-                    (document_id, index, chunk.section, chunk.page, chunk.content)
+                    (
+                        document_id,
+                        index,
+                        chunk.section,
+                        chunk.page,
+                        chunk.content,
+                        vector_literal(embeddings[index]),
+                    )
                     for index, chunk in enumerate(chunks)
                 ],
             )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from math import isclose
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -69,6 +70,29 @@ def test_embeddings_are_deterministic_and_match_pgvector_dimensions() -> None:
     assert all(len(vector) == EMBEDDING_DIMENSIONS for vector in first)
     assert first[0] != first[1]
     assert all(-1.0 <= value <= 1.0 for vector in first for value in vector)
+    assert all(
+        isclose(sum(value * value for value in vector), 1.0, rel_tol=1e-6)
+        for vector in first
+    )
+
+
+def test_mandarin_lexical_overlap_is_reflected_in_stub_similarity() -> None:
+    provider = StubProvider()
+    query, relevant, noise = asyncio.run(
+        provider.embed(
+            [
+                "开始工作前必须安装护栏",
+                "本程序适用于高处作业。开始工作前必须安装护栏。",
+                "食堂菜单和办公室文具清单",
+            ]
+        )
+    )
+
+    def cosine(left: list[float], right: list[float]) -> float:
+        return sum(left_value * right_value for left_value, right_value in zip(left, right))
+
+    assert cosine(query, relevant) >= 0.35
+    assert cosine(query, relevant) > cosine(query, noise)
 
 
 def test_prompt_loader_reads_markdown_and_renders_variables() -> None:

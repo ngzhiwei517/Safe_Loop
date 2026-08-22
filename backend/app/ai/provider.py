@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from hashlib import sha256
 import json
-from math import ceil, floor
+from math import ceil, floor, sqrt
 import os
-from collections.abc import Callable
+import re
 from typing import Final, Protocol, TypeAlias, cast
+import unicodedata
 from uuid import UUID
 
 from pydantic import BaseModel, ValidationError
@@ -22,6 +24,8 @@ JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 Vector: TypeAlias = list[float]
 
 EMBEDDING_DIMENSIONS: Final = 1536
+_LATIN_TOKEN = re.compile(r"[a-z0-9]+(?:[-'][a-z0-9]+)*")
+_CJK_CHARACTER = re.compile(r"[\u3400-\u9fff]")
 
 
 @dataclass(frozen=True)
@@ -313,17 +317,36 @@ class StubProvider:
         )
 
     async def embed(self, texts: list[str]) -> list[Vector]:
-        vectors: list[Vector] = []
-        for text in texts:
-            seed = sha256(text.encode()).digest()
-            values: Vector = []
-            block_index = 0
-            while len(values) < EMBEDDING_DIMENSIONS:
-                block = sha256(seed + block_index.to_bytes(4, "big")).digest()
-                values.extend(round((byte / 127.5) - 1.0, 8) for byte in block)
-                block_index += 1
-            vectors.append(values[:EMBEDDING_DIMENSIONS])
-        return vectors
+        return [_feature_hash_embedding(text) for text in texts]
+
+
+def _feature_hash_embedding(text: str) -> Vector:
+    """Hash lexical features so related fixture text remains close without a model."""
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    features: list[str] = []
+    for token in _LATIN_TOKEN.findall(normalized):
+        features.append(f"word:{token}")
+        features.extend(
+            f"latin3:{token[index : index + 3]}"
+            for index in range(max(0, len(token) - 2))
+        )
+    cjk_text = "".join(_CJK_CHARACTER.findall(normalized))
+    features.extend(f"cjk1:{character}" for character in cjk_text)
+    features.extend(
+        f"cjk2:{cjk_text[index : index + 2]}"
+        for index in range(max(0, len(cjk_text) - 1))
+    )
+    if not features:
+        features.append(f"raw:{sha256(normalized.encode()).hexdigest()}")
+
+    values = [0.0] * EMBEDDING_DIMENSIONS
+    for feature in features:
+        digest = sha256(feature.encode()).digest()
+        position = int.from_bytes(digest[:4], "big") % EMBEDDING_DIMENSIONS
+        direction = 1.0 if digest[4] & 1 else -1.0
+        values[position] += direction
+    magnitude = sqrt(sum(value * value for value in values))
+    return [round(value / magnitude, 8) for value in values]
 
 
 def get_provider() -> AIProvider:

@@ -22,3 +22,16 @@ if (violations.length) {
   console.error(violations.join("\n"));
   process.exit(1);
 }
+
+const tokenSource = await readFile("app/globals.css", "utf8");
+const tailwindTheme = await readFile("tailwind.config.ts", "utf8");
+const tokens = [...tokenSource.matchAll(/--([a-z0-9-]+)\s*:/g)].map(
+  ([, token]) => token,
+);
+const unmapped = tokens.filter(
+  (token) => !tailwindTheme.includes(`var(--${token})`),
+);
+if (unmapped.length) {
+  console.error(`CSS tokens missing from the Tailwind theme: ${unmapped.join(", ")}`);
+  process.exit(1);
+}

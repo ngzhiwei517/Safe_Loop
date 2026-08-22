@@ -1,1 +1,1 @@
-"""Retrieval package; implementation begins in a later phase."""
+"""Extract, embed, and retrieve approved procedure evidence."""

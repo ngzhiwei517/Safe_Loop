@@ -1,40 +1,46 @@
 {
   "name": "safeloop-frontend",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "npm run lint:tokens && npm run lint:locales && npm run lint:i18n && npm run generate-state-machine && next build",
+    "build": "node scripts/check-token-literals.mjs && node scripts/check-locale-keys.mjs && eslint app components --ext .tsx --max-warnings 0 && node scripts/generate-state-machine.mjs && next build",
     "lint:tokens": "node scripts/check-token-literals.mjs",
     "lint:locales": "node scripts/check-locale-keys.mjs",
-    "lint:i18n": "eslint app components --ext .tsx",
+    "lint:i18n": "eslint app components --ext .tsx --max-warnings 0",
     "generate-state-machine": "node scripts/generate-state-machine.mjs",
     "start": "next start",
     "tsc": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@supabase/ssr": "0.5.2",
-    "@supabase/supabase-js": "2.49.1",
+    "@supabase/ssr": "0.12.4",
+    "@supabase/supabase-js": "2.112.3",
     "@heroicons/react": "2.2.0",
-    "next": "15.1.6",
+    "next": "15.5.21",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "next-intl": "3.26.3"
+    "next-intl": "4.13.7"
   },
   "devDependencies": {
-    "@types/node": "22.10.5",
+    "@types/node": "22.20.1",
     "@types/react": "19.0.3",
     "@types/react-dom": "19.0.2",
-    "@typescript-eslint/parser": "8.18.1",
+    "@typescript-eslint/parser": "8.67.0",
     "autoprefixer": "10.4.20",
-    "postcss": "8.4.49",
+    "postcss": "8.5.23",
     "tailwindcss": "3.4.17",
     "typescript": "5.7.2",
     "eslint": "8.57.1",
+    "eslint-config-next": "15.5.21",
     "eslint-plugin-react": "7.37.3",
     "@testing-library/react": "16.1.0",
     "@testing-library/user-event": "14.5.2",
     "jsdom": "25.0.1",
-    "vitest": "2.1.8"
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
   }
 }

@@ -7,6 +7,7 @@ const config: Config = {
       colors: {
         bg: "var(--bg)", surface: "var(--surface)", surfaceSunken: "var(--surface-sunken)",
         border: "var(--border)", ink: "var(--ink)", inkMuted: "var(--ink-muted)",
+        "ink-inverse": "var(--ink-inverse)",
         primary: "var(--primary)", primaryStrong: "var(--primary-strong)", primaryTint: "var(--primary-tint)",
         success: "var(--success)", successStrong: "var(--success-strong)", successTint: "var(--success-tint)", successSurface: "var(--success-surface)",
         warning: "var(--warning)", warningTint: "var(--warning-tint)",
