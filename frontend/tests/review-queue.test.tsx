@@ -151,8 +151,8 @@ describe("ReviewQueue", () => {
     renderQueue(locales[1]);
 
     expect(await screen.findByText(zh["review.queue.title"])).toBeTruthy();
-    expect(screen.getAllByText(zh["status.under_review"])).toHaveLength(2);
-    expect(screen.getAllByText(zh["urgency.critical"])).toHaveLength(2);
+    expect(await screen.findAllByText(zh["status.under_review"])).toHaveLength(2);
+    expect(await screen.findAllByText(zh["urgency.critical"])).toHaveLength(2);
   });
 
   it("requests the reviewer-only manual triage queue", async () => {
