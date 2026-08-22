@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import current_actor
 from app.domain.enums import InputMode, MediaPhase, ReportStatus
-from app.domain.transitions import TransitionError, allowed_targets
+from app.domain.transitions import TransitionError, allowed_targets, find
 from app.services.media_service import (
     MediaError,
     assert_report_readable,
@@ -129,9 +129,19 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
     source = ReportStatus(report["status"])
     result = dict(report)
     result["media"] = media
-    result["available_transitions"] = [
-        target.value for target in allowed_targets(source, actor.actor_type, actor.role)
-    ]
+    available = []
+    for target in allowed_targets(source, actor.actor_type, actor.role):
+        transition = find(source, target)
+        if transition is None:
+            raise RuntimeError("allowed state-machine target has no transition")
+        available.append(
+            {
+                "event": transition.event,
+                "target": transition.target.value,
+                "requires_reason": transition.requires_reason,
+            }
+        )
+    result["available_transitions"] = available
     return cast(dict[str, object], jsonable_encoder(result))
 
 
@@ -159,9 +169,13 @@ async def post_report_media(
 @router.get("/{report_id}/timeline")
 async def report_timeline(report_id: UUID, actor: Actor = Depends(current_actor)) -> list[dict[str, object]]:
     """Return the report's audit timeline."""
-    del actor
-    if await get_report(report_id) is None:
+    report = await get_report(report_id)
+    if report is None:
         raise HTTPException(404, {"code": "report_not_found", "message": "report does not exist"})
+    try:
+        assert_report_readable(report, actor)
+    except MediaError as error:
+        raise media_error(error) from error
     return cast(
         list[dict[str, object]],
         jsonable_encoder([dict(row) for row in await get_timeline(report_id)]),
@@ -175,7 +189,11 @@ async def post_transition(
     actor: Actor = Depends(current_actor),
 ) -> dict[str, object]:
     """Apply one legal transition through the sole status-writing service."""
+    existing_report = await get_report(report_id)
+    if existing_report is None:
+        raise HTTPException(404, {"code": "report_not_found", "message": "report does not exist"})
     try:
+        assert_report_readable(existing_report, actor)
         report = await transition_report(
             report_id,
             payload.target,
@@ -183,6 +201,8 @@ async def post_transition(
             reason=payload.reason,
             metadata=payload.metadata,
         )
+    except MediaError as error:
+        raise media_error(error) from error
     except TransitionError as error:
         raise transition_error(error) from error
     return cast(dict[str, object], jsonable_encoder(dict(report)))

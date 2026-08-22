@@ -93,7 +93,13 @@ async def get_timeline(report_id: UUID) -> list[asyncpg.Record]:
     """Read the immutable report audit trail in chronological order."""
     async with connection() as conn:
         return await conn.fetch(
-            "SELECT * FROM audit_log WHERE report_id = $1 ORDER BY created_at, id",
+            """
+            SELECT audit_log.*, profiles.role::text AS actor_role
+            FROM audit_log
+            LEFT JOIN profiles ON profiles.id = audit_log.actor_id
+            WHERE audit_log.report_id = $1
+            ORDER BY audit_log.created_at, audit_log.id
+            """,
             report_id,
         )
 

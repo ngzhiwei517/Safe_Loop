@@ -13,7 +13,7 @@ import pytest
 from app.db import close_pool, connection, init_pool
 from app.domain.enums import ActorType, InputMode, ReportStatus, Role
 from app.domain.transitions import TransitionError
-from app.services.report_service import Actor, create_report, transition_report
+from app.services.report_service import Actor, create_report, get_timeline, transition_report
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not set")
@@ -69,6 +69,8 @@ def test_create_report_writes_audit_and_human_ref() -> None:
         human_ref, audit_count = run(check())
         assert human_ref.startswith("SL-")
         assert audit_count == 1
+        timeline = run(get_timeline(report_id))
+        assert timeline[0]["actor_role"] == "reporter"
     finally:
         run(cleanup(report_id))
 

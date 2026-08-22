@@ -40,7 +40,7 @@ export const statusColourMap: Record<ReportStatus, readonly [string, string]> = 
     "ink-muted"
   ],
   "escalated": [
-    "danger",
+    "danger-tint",
     "danger"
   ],
   "info_requested": [

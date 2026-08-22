@@ -23,7 +23,7 @@ const statuses = [...new Set([
 const statusConstants = Object.fromEntries(statuses.map((status) => [status, status]));
 const statusStyle = (status) => {
   if (["under_review", "info_requested"].includes(status)) return ["warning-tint", "warning"];
-  if (status === "escalated") return ["danger", "danger"];
+  if (status === "escalated") return ["danger-tint", "danger"];
   if (["action_assigned", "action_submitted", "verified_closed", "lesson_published"].includes(status)) return ["success-tint", "success-strong"];
   if (["submitted", "clarifying", "ai_drafted"].includes(status)) return ["primary-tint", "primary-strong"];
   return ["surface-sunken", "ink-muted"];
