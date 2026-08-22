@@ -11,7 +11,7 @@ async function walk(directory) {
     if (entry.isDirectory()) await walk(path);
     else if (/\.(css|ts|tsx|js|mjs)$/.test(entry.name)) {
       const matches = (await readFile(path, "utf8")).match(hex);
-      if (matches && path.replaceAll("\\\\", "/") !== "app/globals.css") violations.push(`${path}: ${matches.join(", ")}`);
+      if (matches && path.replaceAll("\\", "/") !== "app/globals.css") violations.push(`${path}: ${matches.join(", ")}`);
     }
   }
 }

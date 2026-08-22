@@ -3,8 +3,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run lint:tokens && npm run generate-state-machine && next build",
+    "build": "npm run lint:tokens && npm run lint:locales && npm run lint:i18n && npm run generate-state-machine && next build",
     "lint:tokens": "node scripts/check-token-literals.mjs",
+    "lint:locales": "node scripts/check-locale-keys.mjs",
+    "lint:i18n": "eslint app components --ext .tsx",
     "generate-state-machine": "node scripts/generate-state-machine.mjs",
     "start": "next start",
     "tsc": "tsc --noEmit"
@@ -14,15 +16,19 @@
     "@supabase/supabase-js": "2.49.1",
     "next": "15.1.6",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "next-intl": "3.26.3"
   },
   "devDependencies": {
     "@types/node": "22.10.5",
     "@types/react": "19.0.3",
     "@types/react-dom": "19.0.2",
+    "@typescript-eslint/parser": "8.18.1",
     "autoprefixer": "10.4.20",
     "postcss": "8.4.49",
     "tailwindcss": "3.4.17",
-    "typescript": "5.7.2"
+    "typescript": "5.7.2",
+    "eslint": "8.57.1",
+    "eslint-plugin-react": "7.37.3"
   }
 }
