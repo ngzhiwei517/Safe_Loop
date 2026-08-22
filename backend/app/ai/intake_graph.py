@@ -10,6 +10,7 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
 from app.ai.provider import JsonValue, get_provider
+from app.domain.enums import Role, Urgency
 
 
 class PriorAnswer(TypedDict):
@@ -25,6 +26,32 @@ class IntakeQuestion(TypedDict):
 
     gap: str
     text: str
+
+
+class DraftPayload(TypedDict):
+    """Keep model claims explicit and directly mappable to the append-only row."""
+
+    observed_facts: list[str]
+    assumptions: list[str]
+    missing_information: list[str]
+    proposed_category: str | None
+    proposed_urgency: str | None
+    suggested_owner_role: str | None
+    suggested_action: str | None
+    confidence: float
+    needs_escalation: bool
+    citations: list[dict[str, str]]
+
+
+class DraftEnvelope(DraftPayload):
+    """Carry structured output and the provider evidence needed for persistence."""
+
+    raw: str
+    provider: str
+    provider_ref: str
+    latency_ms: int
+    tokens_in: int
+    tokens_out: int
 
 
 class IntakeState(TypedDict):
@@ -43,7 +70,7 @@ class IntakeState(TypedDict):
     assumptions: list[str]
     missing_information: list[str]
     questions: list[IntakeQuestion]
-    draft: dict[str, JsonValue] | None
+    draft: DraftEnvelope | None
 
 
 MAX_CLARIFICATION_ROUNDS: Final = 2
@@ -293,6 +320,55 @@ class QuestionCompositionResult(BaseModel):
         return {"questions": questions}
 
 
+class DraftResult(BaseModel):
+    observed_facts: list[str]
+    assumptions: list[str]
+    missing_information: list[str]
+    proposed_category: str | None
+    proposed_urgency: Urgency | None
+    suggested_owner_role: Role | None
+    suggested_action: str | None
+    confidence: float = Field(ge=0.0, le=1.0)
+    needs_escalation: bool
+    citations: list[dict[str, str]] = Field(max_length=0)
+
+    @classmethod
+    def stub_fixture(cls, variables: dict[str, object]) -> dict[str, JsonValue]:
+        description = _text(variables, "description").casefold()
+        observed_facts: list[JsonValue] = list(
+            _string_list(variables, "observed_facts")
+        )
+        assumptions: list[JsonValue] = list(_string_list(variables, "assumptions"))
+        missing_information: list[JsonValue] = list(
+            _string_list(variables, "missing_information")
+        )
+        if any(term in description for term in ("guardrail", "edge", "scaffold")):
+            category = "work_at_height"
+            urgency = Urgency.HIGH.value
+        elif any(term in description for term in ("cable", "electrical")):
+            category = "electrical"
+            urgency = Urgency.HIGH.value
+        else:
+            category = "general_hazard"
+            urgency = Urgency.MEDIUM.value
+        needs_escalation = any(
+            term in description
+            for term in ("collapse", "electrocution", "uncontrolled fire")
+        )
+        return {
+            "observed_facts": observed_facts,
+            "assumptions": assumptions,
+            "missing_information": missing_information,
+            "proposed_category": category,
+            "proposed_urgency": urgency,
+            "suggested_owner_role": Role.RESPONSIBLE.value,
+            "suggested_action": None,
+            "confidence": 0.9 if not missing_information else 0.65,
+            "needs_escalation": needs_escalation,
+            "citations": [],
+        }
+
+
 def _result_string(data: dict[str, JsonValue], name: str) -> str:
     value = data.get(name)
     if not isinstance(value, str):
@@ -321,6 +397,28 @@ def _result_questions(data: dict[str, JsonValue]) -> list[IntakeQuestion]:
             raise TypeError("provider result question fields are not strings")
         questions.append({"gap": gap, "text": text})
     return questions
+
+
+def _result_draft(data: dict[str, JsonValue]) -> DraftPayload:
+    result = DraftResult.model_validate(data)
+    return {
+        "observed_facts": result.observed_facts,
+        "assumptions": result.assumptions,
+        "missing_information": result.missing_information,
+        "proposed_category": result.proposed_category,
+        "proposed_urgency": (
+            result.proposed_urgency.value if result.proposed_urgency is not None else None
+        ),
+        "suggested_owner_role": (
+            result.suggested_owner_role.value
+            if result.suggested_owner_role is not None
+            else None
+        ),
+        "suggested_action": result.suggested_action,
+        "confidence": result.confidence,
+        "needs_escalation": result.needs_escalation,
+        "citations": result.citations,
+    }
 
 
 async def translate(state: IntakeState) -> dict[str, object]:
@@ -402,6 +500,34 @@ async def compose_questions(state: IntakeState) -> dict[str, object]:
     return {"questions": questions}
 
 
+async def draft(state: IntakeState) -> dict[str, object]:
+    """Produce a provider-auditable draft without inventing uncited advice."""
+    description = state["description_en"] or state["description_original"]
+    result = await get_provider().complete(
+        "draft_intake",
+        {
+            "description": description,
+            "location": state["location"],
+            "activity": state["activity"],
+            "observed_facts": state["observed_facts"],
+            "assumptions": state["assumptions"],
+            "missing_information": state["missing_information"],
+            "prior_answers": state["prior_answers"],
+        },
+        schema=DraftResult,
+    )
+    envelope: DraftEnvelope = {
+        **_result_draft(result.data),
+        "raw": result.raw,
+        "provider": result.provider,
+        "provider_ref": result.provider_ref,
+        "latency_ms": result.latency_ms,
+        "tokens_in": result.tokens_in,
+        "tokens_out": result.tokens_out,
+    }
+    return {"draft": envelope}
+
+
 def route_after_assessment(state: IntakeState) -> Literal["clarify", "draft"]:
     """Stop asking at the durable two-round safety boundary."""
     if (
@@ -427,15 +553,17 @@ def build_intake_graph() -> CompiledStateGraph[
     builder.add_node("extract_facts", extract_facts)
     builder.add_node("assess_completeness", assess_completeness)
     builder.add_node("compose_questions", compose_questions)
+    builder.add_node("draft", draft)
     builder.add_edge(START, "translate")
     builder.add_edge("translate", "extract_facts")
     builder.add_edge("extract_facts", "assess_completeness")
     builder.add_conditional_edges(
         "assess_completeness",
         route_after_assessment,
-        {"clarify": "compose_questions", "draft": END},
+        {"clarify": "compose_questions", "draft": "draft"},
     )
     builder.add_edge("compose_questions", END)
+    builder.add_edge("draft", END)
     return builder.compile(name="safeloop_intake")
 
 

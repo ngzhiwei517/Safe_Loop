@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json
 from pathlib import Path
 from typing import Literal, cast
 
@@ -53,6 +54,13 @@ def test_complete_mandarin_report_has_english_and_no_gaps() -> None:
     assert isinstance(result["description_en"], str)
     assert result["description_en"] != original
     assert result["missing_information"] == []
+    draft = cast(dict[str, object], result["draft"])
+    raw_payload = cast(dict[str, object], json.loads(cast(str, draft["raw"])))
+    assert raw_payload["observed_facts"] == draft["observed_facts"]
+    assert raw_payload["assumptions"] == draft["assumptions"]
+    assert draft["citations"] == []
+    assert draft["suggested_action"] is None
+    assert draft["provider"] == "stub"
 
 
 def test_vague_report_has_decision_changing_gaps() -> None:
@@ -91,6 +99,8 @@ def test_round_cap_skips_questions_but_keeps_unanswered_gaps() -> None:
 
     assert result["questions"] == []
     assert result["missing_information"] == ["hazard_detail", "location", "activity"]
+    draft = cast(dict[str, object], result["draft"])
+    assert draft["missing_information"] == ["hazard_detail", "location", "activity"]
 
 
 def test_two_prior_answers_exhaust_the_total_question_budget() -> None:
@@ -125,6 +135,9 @@ def test_inference_is_an_assumption_and_never_an_observed_fact() -> None:
     assert any("careless" in item.casefold() for item in assumptions)
     assert all("careless" not in item.casefold() for item in observed)
     assert any("guardrail" in item.casefold() for item in observed)
+    draft = cast(dict[str, object], result["draft"])
+    assert draft["observed_facts"] == observed
+    assert draft["assumptions"] == assumptions
 
 
 def test_code_switched_trade_terms_survive_translation() -> None:

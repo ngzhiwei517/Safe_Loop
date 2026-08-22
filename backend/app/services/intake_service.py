@@ -20,6 +20,7 @@ from app.ai.intake_graph import (
 )
 from app.db import connection
 from app.domain.enums import ActorType, ReportStatus, Role
+from app.services.draft_service import append_draft
 from app.services.report_service import Actor, transition_report
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,10 @@ def _validate_questions(state: IntakeState, result: IntakeState) -> None:
         for question in questions
     ):
         raise ValueError("intake graph returned an invalid clarification question")
+    if questions and result["draft"] is not None:
+        raise ValueError("clarification result cannot also contain a draft")
+    if not questions and result["draft"] is None:
+        raise ValueError("completed intake result must contain a draft")
 
 
 async def _persist_result(
@@ -218,10 +223,17 @@ async def _persist_result(
                     )
                 return True
 
-            target = ReportStatus.AI_DRAFTED
+            draft_envelope = result["draft"]
+            if draft_envelope is None:
+                raise ValueError("completed intake result must contain a draft")
+            await append_draft(
+                report_id,
+                draft_envelope,
+                transaction_connection=conn,
+            )
             await transition_report(
                 report_id,
-                target,
+                ReportStatus.AI_DRAFTED,
                 Actor.ai(),
                 transaction_connection=conn,
             )

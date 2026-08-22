@@ -14,6 +14,7 @@ import pytest
 from app.ai.intake_graph import IntakeState
 from app.db import close_pool, connection, init_pool
 from app.domain.enums import ActorType, ReportStatus, Role
+from app.domain.transitions import TransitionError
 from app.services import intake_service
 from app.services.intake_service import answer_clarification, run_intake
 from app.services.report_service import Actor, create_report, transition_report
@@ -122,22 +123,28 @@ def test_complete_submitted_report_drafts_without_clarification() -> None:
     try:
         assert run(run_intake(report_id)) is True
 
-        async def read() -> tuple[str, int, str]:
+        async def read() -> tuple[str, int, str, int]:
             async with connection() as conn:
                 row = await conn.fetchrow(
                     """
                     select status::text,
                       (select count(*) from clarifications where report_id = $1),
                       (select event from audit_log where report_id = $1
-                       order by created_at desc, id desc limit 1)
+                       order by created_at desc, id desc limit 1),
+                      (select count(*) from ai_drafts where report_id = $1)
                     from reports where id = $1
                     """,
                     report_id,
                 )
                 assert row is not None
-                return row[0], row[1], row[2]
+                return row[0], row[1], row[2], row[3]
 
-        assert run(read()) == ("ai_drafted", 0, "draft_without_clarification")
+        assert run(read()) == (
+            "ai_drafted",
+            0,
+            "draft_without_clarification",
+            1,
+        )
     finally:
         run(cleanup(report_id))
 
@@ -259,5 +266,48 @@ def test_graph_exception_leaves_submitted_status_untouched(
                 return row[0], row[1], row[2]
 
         assert run(read()) == ("submitted", 0, 2)
+    finally:
+        run(cleanup(report_id))
+
+
+def test_failed_transition_rolls_back_the_appended_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def make_complete_report() -> UUID:
+        report_id = await create_report(
+            REPORTER_ID,
+            "The Level 6 guardrail is missing beside formwork.",
+            location_text="Level 6 east edge",
+            activity="Formwork",
+        )
+        await transition_report(
+            report_id,
+            ReportStatus.SUBMITTED,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+        )
+        return report_id
+
+    report_id = run(make_complete_report())
+    try:
+        async def fail_transition(*_: object, **__: object) -> None:
+            raise TransitionError("fixture_transition_failure", "fixture failure")
+
+        monkeypatch.setattr(intake_service, "transition_report", fail_transition)
+        assert run(run_intake(report_id)) is False
+
+        async def read() -> tuple[str, int]:
+            async with connection() as conn:
+                row = await conn.fetchrow(
+                    """
+                    select status::text,
+                      (select count(*) from ai_drafts where report_id = $1)
+                    from reports where id = $1
+                    """,
+                    report_id,
+                )
+                assert row is not None
+                return row[0], row[1]
+
+        assert run(read()) == ("submitted", 0)
     finally:
         run(cleanup(report_id))
