@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "../lib/api";
 import { defaultLocale } from "../lib/locales";
-import { fileReport, type NewReportInput } from "../lib/reports";
+import { fileReport, listReports, type NewReportInput } from "../lib/reports";
 import { reportStatus } from "../lib/stateMachine";
 
 vi.mock("../lib/api", () => ({ apiFetch: vi.fn() }));
@@ -86,6 +86,27 @@ describe("fileReport", () => {
     );
     expect(upload.mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(apiFetch).mock.invocationCallOrder[2],
+    );
+  });
+
+  it("passes every queue filter through one keyset-paginated request", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({ items: [], next_cursor: null });
+
+    await listReports(
+      {
+        status: reportStatus.under_review,
+        urgency: "critical",
+        assignee: "00000000-0000-0000-0000-000000000004",
+        q: "Tower A",
+        cursor: "opaque-cursor",
+        limit: 25,
+      },
+      "test-token",
+    );
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/reports?status=under_review&urgency=critical&assignee=00000000-0000-0000-0000-000000000004&q=Tower+A&cursor=opaque-cursor&limit=25",
+      "test-token",
     );
   });
 });

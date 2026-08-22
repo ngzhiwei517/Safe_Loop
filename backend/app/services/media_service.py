@@ -40,6 +40,7 @@ class MediaPolicy:
 
 
 MediaSigner = Callable[[str, MediaPolicy], Awaitable[str]]
+MediaBatchSigner = Callable[[list[str], MediaPolicy], Awaitable[dict[str, str]]]
 
 
 def media_policy(settings: Settings | None = None) -> MediaPolicy:
@@ -247,6 +248,76 @@ async def create_signed_url(
     if signed_path.startswith(("http://", "https://")):
         return signed_path
     return urljoin(f"{storage_base}/", signed_path.lstrip("/"))
+
+
+async def create_signed_urls(
+    storage_paths: list[str],
+    policy: MediaPolicy,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, str]:
+    """Mint a page of thumbnail URLs with one Storage request."""
+    if not storage_paths:
+        return {}
+    settings = get_settings()
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise MediaError("storage_not_configured", "Supabase Storage signing configuration is missing")
+
+    storage_base = f"{settings.supabase_url.rstrip('/')}/storage/v1"
+    endpoint = f"{storage_base}/object/sign/{quote(policy.bucket, safe='')}"
+    headers = {
+        "apikey": settings.supabase_service_role_key,
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+    }
+    owns_client = client is None
+    active_client = client or httpx.AsyncClient(timeout=10.0)
+    try:
+        response = await active_client.post(
+            endpoint,
+            headers=headers,
+            json={"expiresIn": policy.signed_url_ttl_seconds, "paths": storage_paths},
+        )
+    except httpx.HTTPError as error:
+        raise MediaError("storage_sign_failed", "Storage signing request failed") from error
+    finally:
+        if owns_client:
+            await active_client.aclose()
+    if response.status_code >= 400:
+        raise MediaError("storage_sign_failed", "Storage rejected the signing request")
+
+    body = response.json()
+    if not isinstance(body, list):
+        raise MediaError("storage_sign_failed", "Storage signing response is invalid")
+    signed_urls: dict[str, str] = {}
+    for item in body:
+        if not isinstance(item, dict):
+            raise MediaError("storage_sign_failed", "Storage signing response is invalid")
+        storage_path = item.get("path")
+        signed_path = item.get("signedURL", item.get("signedUrl"))
+        if not isinstance(storage_path, str) or not isinstance(signed_path, str) or not signed_path:
+            raise MediaError("storage_sign_failed", "Storage signing response has no URL")
+        signed_urls[storage_path] = (
+            signed_path
+            if signed_path.startswith(("http://", "https://"))
+            else urljoin(f"{storage_base}/", signed_path.lstrip("/"))
+        )
+    if set(signed_urls) != set(storage_paths):
+        raise MediaError("storage_sign_failed", "Storage did not sign every requested object")
+    return signed_urls
+
+
+async def get_signed_media_urls(
+    storage_paths: list[str],
+    *,
+    signer: MediaBatchSigner | None = None,
+) -> tuple[dict[str, str], datetime]:
+    """Batch-sign unique paths and return their shared expiration time."""
+    policy = media_policy()
+    unique_paths = list(dict.fromkeys(storage_paths))
+    active_signer = signer or create_signed_urls
+    signed_urls = await active_signer(unique_paths, policy)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=policy.signed_url_ttl_seconds)
+    return signed_urls, expires_at
 
 
 async def get_signed_report_media(

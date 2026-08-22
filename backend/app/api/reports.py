@@ -5,20 +5,29 @@ from __future__ import annotations
 from typing import Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from app.api.deps import current_actor
-from app.domain.enums import InputMode, MediaPhase, ReportStatus
+from app.domain.enums import InputMode, MediaPhase, ReportStatus, Urgency
 from app.domain.transitions import TransitionError, allowed_targets, find
 from app.services.media_service import (
     MediaError,
     assert_report_readable,
+    get_signed_media_urls,
     get_signed_report_media,
     register_report_media,
 )
-from app.services.report_service import Actor, create_report, get_report, get_timeline, transition_report
+from app.services.report_service import (
+    Actor,
+    ReportListError,
+    create_report,
+    get_report,
+    get_timeline,
+    list_reports,
+    transition_report,
+)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -92,6 +101,65 @@ def media_error(error: MediaError) -> HTTPException:
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
         {"code": error.code, "message": error.message},
+    )
+
+
+def report_list_error(error: ReportListError) -> HTTPException:
+    """Map list-query failures to stable API error contracts."""
+    code_status = {
+        "report_list_forbidden": status.HTTP_403_FORBIDDEN,
+        "invalid_cursor": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "invalid_page_size": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    }
+    return HTTPException(
+        code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        {"code": error.code, "message": error.message},
+    )
+
+
+@router.get("")
+async def report_list(
+    report_status: ReportStatus | None = Query(default=None, alias="status"),
+    urgency: Urgency | None = Query(default=None),
+    assignee_id: UUID | None = Query(default=None, alias="assignee"),
+    q: str | None = Query(default=None, max_length=200),
+    cursor: str | None = Query(default=None, max_length=1000),
+    limit: int = Query(default=25, ge=1, le=100),
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Return one role-scoped queue page and its opaque continuation cursor."""
+    try:
+        page = await list_reports(
+            actor,
+            report_status=report_status,
+            urgency=urgency,
+            assignee_id=assignee_id,
+            query=q,
+            cursor=cursor,
+            limit=limit,
+        )
+        paths = [
+            row["thumbnail_storage_path"]
+            for row in page.rows
+            if row["thumbnail_storage_path"] is not None
+        ]
+        signed_urls, expires_at = await get_signed_media_urls(paths)
+    except ReportListError as error:
+        raise report_list_error(error) from error
+    except MediaError as error:
+        raise media_error(error) from error
+
+    items: list[dict[str, object]] = []
+    for row in page.rows:
+        item = dict(row)
+        item.pop("_urgency_rank", None)
+        storage_path = item.pop("thumbnail_storage_path", None)
+        item["thumbnail_url"] = signed_urls.get(storage_path) if isinstance(storage_path, str) else None
+        item["thumbnail_url_expires_at"] = expires_at if isinstance(storage_path, str) else None
+        items.append(item)
+    return cast(
+        dict[str, object],
+        jsonable_encoder({"items": items, "next_cursor": page.next_cursor}),
     )
 
 

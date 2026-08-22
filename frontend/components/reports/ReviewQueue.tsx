@@ -1,0 +1,275 @@
+"use client";
+
+import {
+  BellIcon,
+  BookOpenIcon,
+  ChartBarIcon,
+  ClipboardDocumentCheckIcon,
+  ClipboardDocumentListIcon,
+  PhotoIcon,
+  WrenchScrewdriverIcon,
+} from "@heroicons/react/24/outline";
+import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+
+import {
+  defaultLocale,
+  formatNumber,
+  formatRelativeAge,
+  isLocale,
+  locales,
+} from "../../lib/locales";
+import {
+  listReports,
+  urgencyLevels,
+  type ReportListItem,
+  type Urgency,
+} from "../../lib/reports";
+import {
+  reportStatuses,
+  reportStatus,
+  type ReportStatus,
+} from "../../lib/stateMachine";
+import { createClient } from "../../lib/supabase/browser";
+import { AppShell } from "../ui/AppShell";
+import { Banner } from "../ui/Banner";
+import { SecondaryButton } from "../ui/Buttons";
+import { Card } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
+import { Field } from "../ui/Field";
+import { LanguageSwitch } from "../ui/LanguageSwitch";
+import { StatusChip } from "../ui/StatusChip";
+
+const urgencyBorder: Record<Urgency, string> = {
+  low: "",
+  medium: "",
+  high: "border-l-4 border-l-primary",
+  critical: "border-l-4 border-l-danger",
+};
+
+const urgencyText: Record<Urgency, string> = {
+  low: "text-inkMuted",
+  medium: "text-inkMuted",
+  high: "text-primaryStrong",
+  critical: "text-danger",
+};
+
+export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
+  const t = useTranslations();
+  const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const [statusFilter, setStatusFilter] = useState<ReportStatus | "">(
+    reportStatus.under_review,
+  );
+  const [urgencyFilter, setUrgencyFilter] = useState<Urgency | "">("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [items, setItems] = useState<ReportListItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  const load = useCallback(
+    async (cursor?: string) => {
+      const append = Boolean(cursor);
+      append ? setLoadingMore(true) : setLoading(true);
+      setLoadFailed(false);
+      try {
+        const {
+          data: { session },
+        } = await createClient().auth.getSession();
+        if (!session) throw new Error("session_required");
+        const page = await listReports(
+          {
+            status: statusFilter || undefined,
+            urgency: urgencyFilter || undefined,
+            q: searchQuery || undefined,
+            cursor,
+          },
+          session.access_token,
+        );
+        setItems((current) => (append ? [...current, ...page.items] : page.items));
+        setNextCursor(page.next_cursor);
+      } catch {
+        setLoadFailed(true);
+      } finally {
+        append ? setLoadingMore(false) : setLoading(false);
+      }
+    },
+    [searchQuery, statusFilter, urgencyFilter],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSearchQuery(searchInput.trim());
+  }
+
+  const languageSwitch = (
+    <LanguageSwitch
+      current={locale}
+      label={t("app.language")}
+      options={[
+        { value: locales[0], label: t("app.languageEnglish") },
+        { value: locales[1], label: t("app.languageChinese") },
+      ]}
+    />
+  );
+  const navItems = [
+    {
+      href: `/${locale}/review`,
+      label: t("review.nav.queue"),
+      icon: <ClipboardDocumentListIcon className="h-5 w-5" />,
+    },
+    {
+      href: `/${locale}/actions`,
+      label: t("review.nav.actions"),
+      icon: <WrenchScrewdriverIcon className="h-5 w-5" />,
+    },
+    {
+      href: `/${locale}/briefings`,
+      label: t("review.nav.briefings"),
+      icon: <BookOpenIcon className="h-5 w-5" />,
+    },
+    {
+      href: `/${locale}/dashboard`,
+      label: t("review.nav.dashboard"),
+      icon: <ChartBarIcon className="h-5 w-5" />,
+    },
+  ];
+
+  return (
+    <AppShell
+      title={t("review.queue.title")}
+      inboxHref={`/${locale}/inbox`}
+      inboxLabel={t("app.inbox")}
+      inboxIcon={<BellIcon className="h-6 w-6" />}
+      unreadCount={0}
+      navItems={navItems}
+      activeHref={`/${locale}/review`}
+      languageSwitch={languageSwitch}
+    >
+      <section className="space-y-4 pb-6 pt-3">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-sm font-bold text-inkMuted">
+            <span>{t("review.queue.statusFilter")}</span>
+            <select
+              className="mt-1 min-h-11 w-full rounded-control border border-border bg-surface px-3 text-base text-ink outline-none focus:border-primaryStrong focus:ring-2 focus:ring-primaryTint"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as ReportStatus | "")}
+            >
+              <option value="">{t("review.queue.allStatuses")}</option>
+              {reportStatuses.map((status) => (
+                <option key={status} value={status}>{t(`status.${status}`)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm font-bold text-inkMuted">
+            <span>{t("review.queue.urgencyFilter")}</span>
+            <select
+              className="mt-1 min-h-11 w-full rounded-control border border-border bg-surface px-3 text-base text-ink outline-none focus:border-primaryStrong focus:ring-2 focus:ring-primaryTint"
+              value={urgencyFilter}
+              onChange={(event) => setUrgencyFilter(event.target.value as Urgency | "")}
+            >
+              <option value="">{t("review.queue.allUrgencies")}</option>
+              {urgencyLevels.map((urgency) => (
+                <option key={urgency} value={urgency}>{t(`urgency.${urgency}`)}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <form className="grid grid-cols-[1fr_auto] items-end gap-3" onSubmit={search}>
+          <Field
+            label={t("review.queue.searchLabel")}
+            placeholder={t("review.queue.searchPlaceholder")}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+          />
+          <SecondaryButton className="w-auto min-w-24" label={t("review.queue.search")} type="submit" />
+        </form>
+
+        {loadFailed && (
+          <Banner
+            tone="warning"
+            title={t("review.queue.loadFailedTitle")}
+            detail={t("review.queue.loadFailedDetail")}
+          />
+        )}
+
+        {loading ? (
+          <p className="py-8 text-center text-base text-inkMuted" role="status">
+            {t("review.queue.loading")}
+          </p>
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={<ClipboardDocumentCheckIcon className="h-8 w-8" />}
+            title={t("review.queue.emptyTitle")}
+            detail={t("review.queue.emptyDetail")}
+            action={loadFailed ? <SecondaryButton label={t("review.queue.retry")} onClick={() => void load()} /> : undefined}
+          />
+        ) : (
+          <div className="space-y-3">
+            {items.map((report) => (
+              <Link
+                className="block rounded-card outline-none focus:ring-2 focus:ring-primaryStrong focus:ring-offset-2 focus:ring-offset-bg"
+                href={`/${locale}/report/${report.id}`}
+                key={report.id}
+              >
+                <Card className={`flex gap-4 ${urgencyBorder[report.urgency]}`}>
+                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-tile bg-surfaceSunken">
+                    {report.thumbnail_url ? (
+                      <img
+                        className="h-full w-full object-cover"
+                        src={report.thumbnail_url}
+                        alt={report.thumbnail_caption?.trim() || t("review.queue.photoAlt")}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="grid h-full w-full place-items-center text-inkMuted" aria-label={t("review.queue.noPhoto")}>
+                        <PhotoIcon className="h-7 w-7" />
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="truncate text-base font-bold text-ink">{report.summary}</p>
+                      <p className={`shrink-0 text-xs font-bold uppercase tracking-wide ${urgencyText[report.urgency]}`}>
+                        {t(`urgency.${report.urgency}`)}
+                      </p>
+                    </div>
+                    <div className="mt-1 flex flex-wrap divide-x divide-border text-sm text-inkMuted">
+                      <span className="pr-2 font-bold">{report.human_ref}</span>
+                      <span className="px-2">{report.location_text?.trim() || t("review.queue.locationUnknown")}</span>
+                      <span className="pl-2">{formatRelativeAge(report.created_at, locale)}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <StatusChip status={report.status} label={t(`status.${report.status}`)} />
+                      {report.rework_count > 0 && (
+                        <span className="text-sm font-bold text-danger">
+                          {t("review.queue.rework", { count: formatNumber(report.rework_count, locale) })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {nextCursor && !loading && (
+          <SecondaryButton
+            label={loadingMore ? t("review.queue.loadingMore") : t("review.queue.loadMore")}
+            disabled={loadingMore}
+            onClick={() => void load(nextCursor)}
+          />
+        )}
+      </section>
+    </AppShell>
+  );
+}

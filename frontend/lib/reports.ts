@@ -3,6 +3,9 @@ import type { Locale } from "./locales";
 import { uploadReportPhoto, type MediaPhase, type ReportPhotoUpload } from "./media";
 import { reportStatus, type ReportStatus } from "./stateMachine";
 
+export const urgencyLevels = ["low", "medium", "high", "critical"] as const;
+export type Urgency = (typeof urgencyLevels)[number];
+
 export type NewReportInput = {
   description_original: string;
   lang_original: Locale;
@@ -37,7 +40,7 @@ export type ReportDetail = {
   id: string;
   human_ref: string;
   status: ReportStatus;
-  urgency: "low" | "medium" | "high" | "critical";
+  urgency: Urgency;
   lang_original: Locale;
   description_original: string;
   description_en: string | null;
@@ -48,6 +51,34 @@ export type ReportDetail = {
   created_at: string;
   media: ReportMedia[];
   available_transitions: AvailableTransition[];
+};
+
+export type ReportListItem = {
+  id: string;
+  human_ref: string;
+  status: ReportStatus;
+  urgency: Urgency;
+  summary: string;
+  location_text: string | null;
+  created_at: string;
+  thumbnail_caption: string | null;
+  thumbnail_url: string | null;
+  thumbnail_url_expires_at: string | null;
+  rework_count: number;
+};
+
+export type ReportListPage = {
+  items: ReportListItem[];
+  next_cursor: string | null;
+};
+
+export type ReportListFilters = {
+  status?: ReportStatus;
+  urgency?: Urgency;
+  assignee?: string;
+  q?: string;
+  cursor?: string;
+  limit?: number;
 };
 
 export type TimelineEntry = {
@@ -82,6 +113,18 @@ export async function fileReport(
 
 export function getReport(reportId: string, accessToken: string): Promise<ReportDetail> {
   return apiFetch<ReportDetail>(`/reports/${reportId}`, accessToken);
+}
+
+export function listReports(filters: ReportListFilters, accessToken: string): Promise<ReportListPage> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.urgency) params.set("urgency", filters.urgency);
+  if (filters.assignee) params.set("assignee", filters.assignee);
+  if (filters.q?.trim()) params.set("q", filters.q.trim());
+  if (filters.cursor) params.set("cursor", filters.cursor);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const query = params.toString();
+  return apiFetch<ReportListPage>(`/reports${query ? `?${query}` : ""}`, accessToken);
 }
 
 export function getTimeline(reportId: string, accessToken: string): Promise<TimelineEntry[]> {

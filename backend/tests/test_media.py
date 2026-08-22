@@ -18,6 +18,7 @@ from app.services.media_service import (
     MediaPolicy,
     assert_report_readable,
     create_signed_url,
+    create_signed_urls,
     validate_media_registration,
 )
 from app.services.report_service import Actor
@@ -147,6 +148,43 @@ def test_storage_signing_uses_ten_minute_expiry_without_network(
     assert len(requests) == 1
     assert json.loads(requests[0].content) == {"expiresIn": 600}
     assert requests[0].headers["authorization"] == "Bearer service-test-key"
+
+
+def test_thumbnail_page_uses_one_batch_signing_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SUPABASE_URL", "https://project.example")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-test-key")
+    get_settings.cache_clear()
+    requests: list[httpx.Request] = []
+    paths = ["path/photo-a.jpg", "path/photo-b.jpg"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "path": path,
+                    "signedURL": f"/object/sign/report-media/{path}?token=test",
+                }
+                for path in paths
+            ],
+        )
+
+    async def exercise() -> dict[str, str]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await create_signed_urls(paths, IMAGE_POLICY, client=client)
+
+    try:
+        urls = asyncio.run(exercise())
+    finally:
+        get_settings.cache_clear()
+
+    assert len(requests) == 1
+    assert requests[0].url.path.endswith("/object/sign/report-media")
+    assert json.loads(requests[0].content) == {"expiresIn": 600, "paths": paths}
+    assert urls[paths[0]].endswith("photo-a.jpg?token=test")
 
 
 def test_reviewer_report_read_includes_signed_media(

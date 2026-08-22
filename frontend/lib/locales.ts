@@ -16,3 +16,21 @@ export function formatDateTime(value: Date | string, locale: Locale): string {
 }
 
 export function formatNumber(value: number, locale: Locale): string { return new Intl.NumberFormat(locale).format(value); }
+
+export function formatRelativeAge(
+  value: Date | string,
+  locale: Locale,
+  now: Date = new Date(),
+): string {
+  const seconds = (new Date(value).getTime() - now.getTime()) / 1000;
+  const absoluteSeconds = Math.abs(seconds);
+  const [amount, unit]: [number, Intl.RelativeTimeFormatUnit] =
+    absoluteSeconds < 60
+      ? [seconds, "second"]
+      : absoluteSeconds < 3600
+        ? [seconds / 60, "minute"]
+        : absoluteSeconds < 86400
+          ? [seconds / 3600, "hour"]
+          : [seconds / 86400, "day"];
+  return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(Math.round(amount), unit);
+}
