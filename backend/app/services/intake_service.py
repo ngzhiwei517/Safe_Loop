@@ -16,10 +16,12 @@ from app.ai.intake_graph import (
     MAX_CLARIFICATION_ROUNDS,
     MAX_QUESTIONS_PER_ROUND,
     PriorAnswer,
+    RetrievedProcedure,
     intake_graph,
 )
 from app.db import connection
 from app.domain.enums import ActorType, ReportStatus, Role, ValidationStatus
+from app.rag.retrieve import retrieve_chunks
 from app.services.draft_service import append_draft
 from app.services.report_service import Actor, transition_report
 
@@ -115,13 +117,38 @@ async def _load_intake(report_id: UUID) -> _LoadedIntake | None:
             "assumptions": [],
             "missing_information": [],
             "questions": [],
+            "retrieved_chunks": [],
             "draft": None,
         }
         return _LoadedIntake(status, state)
 
 
+def _retrieval_query(state: IntakeState) -> str:
+    parts = [
+        state["description_en"] or state["description_original"],
+        state["location"] or "",
+        state["activity"] or "",
+        *(answer["answer"] for answer in state["prior_answers"]),
+    ]
+    return "\n".join(part.strip() for part in parts if part.strip())
+
+
 async def _invoke_graph(state: IntakeState) -> IntakeState:
-    result = await intake_graph.ainvoke(state)
+    hits = await retrieve_chunks(_retrieval_query(state))
+    retrieved: list[RetrievedProcedure] = [
+        {
+            "content": hit.content,
+            "document_id": str(hit.document_id),
+            "doc_ref": hit.doc_ref,
+            "revision": hit.revision,
+            "section": hit.section,
+            "page": hit.page,
+            "similarity": hit.similarity,
+        }
+        for hit in hits
+    ]
+    graph_state: IntakeState = {**state, "retrieved_chunks": retrieved}
+    result = await intake_graph.ainvoke(graph_state)
     if type(result) is not dict:
         raise TypeError("intake graph must return a plain dict")
     return cast(IntakeState, result)

@@ -100,7 +100,16 @@ const report: ReportDetail = {
     confidence: 0.82,
     needs_escalation: false,
     escalation_reason: null,
-    citations: [],
+    citations: [
+      {
+        document_id: "20000000-0000-0000-0000-000000000001",
+        doc_ref: "WAH-001",
+        revision: "3",
+        section: "4.2",
+        page: 7,
+        quote: "Install secured guardrails before work resumes. Keep the area clear.",
+      },
+    ],
     validation: "valid",
     validation_errors: [],
     created_at: "2026-08-22T01:01:00Z",
@@ -190,6 +199,19 @@ describe("ReviewDecisionPage", () => {
     const assumption = screen.getByText(report.latest_draft!.assumptions[0]);
     expect(assumption.closest(".italic")).not.toBeNull();
     expect(screen.getByText(report.latest_draft!.missing_information[0])).toBeTruthy();
+    expect(screen.getByText(en["review.draft.references"])).toBeTruthy();
+    expect(
+      screen.getByText(
+        en["review.draft.referenceDocument"]
+          .replace("{docRef}", "WAH-001")
+          .replace("{revision}", "3"),
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Install secured guardrails before work resumes. Keep the area clear.",
+      ),
+    ).toBeTruthy();
   });
 
   it("does not invent a decision the server omitted", async () => {
@@ -366,6 +388,12 @@ describe("ReviewDecisionPage", () => {
     expect(await screen.findByText(zh["review.detail.report"])).toBeTruthy();
     expect(screen.getByText(zh["timeline.event.queue_for_review"])).toBeTruthy();
     expect(screen.getByText(zh["review.draft.assumptionNotObserved"])).toBeTruthy();
+    expect(screen.getByText(zh["review.draft.references"])).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Install secured guardrails before work resumes. Keep the area clear.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: zh["action.reject"] })).toBeTruthy();
   });
 

@@ -66,17 +66,36 @@ def _assert_envelope(envelope: DraftEnvelope) -> DraftPayload:
             "draft_raw_mismatch",
             "provider raw output does not match the structured draft",
         )
-    if payload["citations"]:
-        raise DraftPersistenceError(
-            "draft_citations_not_available",
-            "citations are not available before retrieval",
-        )
-    if payload["suggested_action"] is not None:
-        raise DraftPersistenceError(
-            "draft_action_uncited",
-            "a suggested action requires an approved citation",
-        )
     return payload
+
+
+async def _citation_sources(
+    conn: PoolConnectionProxy[asyncpg.Record],
+    payload: DraftPayload,
+) -> list[dict[str, object]]:
+    document_ids = list(
+        dict.fromkeys(citation["document_id"] for citation in payload["citations"])
+    )
+    if not document_ids:
+        return []
+    rows = await conn.fetch(
+        """
+        select d.id::text as document_id,
+               d.doc_ref,
+               d.revision,
+               dc.section,
+               dc.page,
+               dc.content
+        from document_chunks dc
+        join documents d on d.id = dc.document_id
+        where d.id::text = any($1::text[])
+          and d.is_approved = true
+          and d.effective_from <= now()
+        for share of d, dc
+        """,
+        document_ids,
+    )
+    return [dict(row) for row in rows]
 
 
 async def append_draft(
@@ -87,7 +106,6 @@ async def append_draft(
 ) -> asyncpg.Record:
     """Allocate the next version while holding the parent report lock."""
     payload = _assert_envelope(envelope)
-    validation, validation_errors = validate_draft(payload)
     async with _draft_connection(transaction_connection) as conn:
         async with conn.transaction():
             locked_report_id = await conn.fetchval(
@@ -99,6 +117,11 @@ async def append_draft(
                     "report_not_found",
                     "report does not exist",
                 )
+            sources = await _citation_sources(conn, payload)
+            validation, validation_errors = validate_draft(
+                payload,
+                citation_sources=sources,
+            )
             version = await conn.fetchval(
                 """
                 select coalesce(max(version), 0) + 1

@@ -30,6 +30,7 @@ def _state() -> IntakeState:
         "assumptions": [],
         "missing_information": [],
         "questions": [],
+        "retrieved_chunks": [],
         "draft": None,
     }
 

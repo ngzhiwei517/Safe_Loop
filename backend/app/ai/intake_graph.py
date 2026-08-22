@@ -28,6 +28,29 @@ class IntakeQuestion(TypedDict):
     text: str
 
 
+class RetrievedProcedure(TypedDict):
+    """Carry approved chunk text into the database-pure graph as plain data."""
+
+    content: str
+    document_id: str
+    doc_ref: str
+    revision: str
+    section: str | None
+    page: int | None
+    similarity: float
+
+
+class DraftCitation(TypedDict):
+    """Keep one recommendation traceable to an exact corpus coordinate."""
+
+    document_id: str
+    doc_ref: str
+    revision: str
+    section: str | None
+    page: int | None
+    quote: str
+
+
 class DraftPayload(TypedDict):
     """Keep model claims explicit and directly mappable to the append-only row."""
 
@@ -41,7 +64,7 @@ class DraftPayload(TypedDict):
     confidence: float
     needs_escalation: bool
     escalation_reason: str | None
-    citations: list[dict[str, str]]
+    citations: list[DraftCitation]
 
 
 class DraftEnvelope(DraftPayload):
@@ -71,6 +94,7 @@ class IntakeState(TypedDict):
     assumptions: list[str]
     missing_information: list[str]
     questions: list[IntakeQuestion]
+    retrieved_chunks: list[RetrievedProcedure]
     draft: DraftEnvelope | None
 
 
@@ -321,6 +345,101 @@ class QuestionCompositionResult(BaseModel):
         return {"questions": questions}
 
 
+class DraftCitationResult(BaseModel):
+    document_id: str = Field(min_length=1)
+    doc_ref: str = Field(min_length=1)
+    revision: str = Field(min_length=1)
+    section: str | None
+    page: int | None
+    quote: str = Field(min_length=1)
+
+
+def _retrieved_procedures(value: object) -> list[RetrievedProcedure]:
+    if not isinstance(value, list):
+        return []
+    procedures: list[RetrievedProcedure] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        document_id = item.get("document_id")
+        doc_ref = item.get("doc_ref")
+        revision = item.get("revision")
+        section = item.get("section")
+        page = item.get("page")
+        similarity = item.get("similarity")
+        if (
+            not isinstance(content, str)
+            or not content.strip()
+            or not isinstance(document_id, str)
+            or not document_id.strip()
+            or not isinstance(doc_ref, str)
+            or not doc_ref.strip()
+            or not isinstance(revision, str)
+            or not revision.strip()
+            or section is not None
+            and not isinstance(section, str)
+            or page is not None
+            and (not isinstance(page, int) or isinstance(page, bool))
+            or not isinstance(similarity, int | float)
+            or isinstance(similarity, bool)
+        ):
+            continue
+        procedures.append(
+            {
+                "content": content,
+                "document_id": document_id,
+                "doc_ref": doc_ref,
+                "revision": revision,
+                "section": section,
+                "page": page,
+                "similarity": float(similarity),
+            }
+        )
+    return sorted(
+        procedures,
+        key=lambda procedure: procedure["similarity"],
+        reverse=True,
+    )[:6]
+
+
+def _missing_procedure(description: str) -> str:
+    if any(term in description for term in ("guardrail", "edge", "scaffold")):
+        return "approved_work_at_height_procedure"
+    if any(term in description for term in ("cable", "electrical")):
+        return "approved_electrical_safety_procedure"
+    return "approved_site_safety_procedure"
+
+
+def _verbatim_excerpt(content: str) -> str:
+    segments = [
+        segment.strip()
+        for segment in re.split(r"(?<=[.!?。！？])\s+|[\r\n]+", content)
+        if segment.strip()
+    ]
+    if not segments:
+        raise ValueError("retrieved procedure content is empty")
+    action_markers = (
+        "must",
+        "shall",
+        "do not",
+        "stop",
+        "install",
+        "必须",
+        "不得",
+        "应当",
+        "应",
+    )
+    return next(
+        (
+            segment
+            for segment in segments
+            if any(marker in segment.casefold() for marker in action_markers)
+        ),
+        segments[0],
+    )
+
+
 class DraftResult(BaseModel):
     observed_facts: list[str]
     assumptions: list[str]
@@ -332,7 +451,7 @@ class DraftResult(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     needs_escalation: bool
     escalation_reason: str | None
-    citations: list[dict[str, str]] = Field(max_length=0)
+    citations: list[DraftCitationResult] = Field(max_length=6)
 
     @classmethod
     def stub_fixture(cls, variables: dict[str, object]) -> dict[str, JsonValue]:
@@ -341,9 +460,9 @@ class DraftResult(BaseModel):
             _string_list(variables, "observed_facts")
         )
         assumptions: list[JsonValue] = list(_string_list(variables, "assumptions"))
-        missing_information: list[JsonValue] = list(
-            _string_list(variables, "missing_information")
-        )
+        intake_gaps = _string_list(variables, "missing_information")
+        missing_information: list[JsonValue] = list(intake_gaps)
+        retrieved_chunks = _retrieved_procedures(variables.get("retrieved_chunks"))
         if any(term in description for term in ("guardrail", "edge", "scaffold")):
             category = "work_at_height"
             urgency = Urgency.HIGH.value
@@ -357,6 +476,23 @@ class DraftResult(BaseModel):
             term in description
             for term in ("collapse", "electrocution", "uncontrolled fire")
         )
+        citations: list[JsonValue] = []
+        suggested_action: str | None = None
+        if retrieved_chunks:
+            source = retrieved_chunks[0]
+            suggested_action = _verbatim_excerpt(source["content"])
+            citations.append(
+                {
+                    "document_id": source["document_id"],
+                    "doc_ref": source["doc_ref"],
+                    "revision": source["revision"],
+                    "section": source["section"],
+                    "page": source["page"],
+                    "quote": suggested_action,
+                }
+            )
+        else:
+            missing_information.append(_missing_procedure(description))
         return {
             "observed_facts": observed_facts,
             "assumptions": assumptions,
@@ -364,15 +500,15 @@ class DraftResult(BaseModel):
             "proposed_category": category,
             "proposed_urgency": urgency,
             "suggested_owner_role": Role.RESPONSIBLE.value,
-            "suggested_action": None,
-            "confidence": 0.9 if not missing_information else 0.65,
+            "suggested_action": suggested_action,
+            "confidence": 0.9 if not intake_gaps else 0.65,
             "needs_escalation": needs_escalation,
             "escalation_reason": (
                 "Description contains an immediate escalation marker."
                 if needs_escalation
                 else None
             ),
-            "citations": [],
+            "citations": citations,
         }
 
 
@@ -408,6 +544,17 @@ def _result_questions(data: dict[str, JsonValue]) -> list[IntakeQuestion]:
 
 def _result_draft(data: dict[str, JsonValue]) -> DraftPayload:
     result = DraftResult.model_validate(data)
+    citations: list[DraftCitation] = [
+        {
+            "document_id": citation.document_id,
+            "doc_ref": citation.doc_ref,
+            "revision": citation.revision,
+            "section": citation.section,
+            "page": citation.page,
+            "quote": citation.quote,
+        }
+        for citation in result.citations
+    ]
     return {
         "observed_facts": result.observed_facts,
         "assumptions": result.assumptions,
@@ -425,7 +572,7 @@ def _result_draft(data: dict[str, JsonValue]) -> DraftPayload:
         "confidence": result.confidence,
         "needs_escalation": result.needs_escalation,
         "escalation_reason": result.escalation_reason,
-        "citations": result.citations,
+        "citations": citations,
     }
 
 
@@ -508,6 +655,11 @@ async def compose_questions(state: IntakeState) -> dict[str, object]:
     return {"questions": questions}
 
 
+async def retrieve(state: IntakeState) -> dict[str, object]:
+    """Validate and rank service-supplied corpus hits without database access."""
+    return {"retrieved_chunks": _retrieved_procedures(state["retrieved_chunks"])}
+
+
 async def draft(state: IntakeState) -> dict[str, object]:
     """Produce a provider-auditable draft without inventing uncited advice."""
     description = state["description_en"] or state["description_original"]
@@ -521,6 +673,7 @@ async def draft(state: IntakeState) -> dict[str, object]:
             "assumptions": state["assumptions"],
             "missing_information": state["missing_information"],
             "prior_answers": state["prior_answers"],
+            "retrieved_chunks": state["retrieved_chunks"],
         },
         schema=DraftResult,
     )
@@ -536,7 +689,7 @@ async def draft(state: IntakeState) -> dict[str, object]:
     return {"draft": envelope}
 
 
-def route_after_assessment(state: IntakeState) -> Literal["clarify", "draft"]:
+def route_after_assessment(state: IntakeState) -> Literal["clarify", "retrieve"]:
     """Stop asking at the durable two-round safety boundary."""
     if (
         state["missing_information"]
@@ -544,7 +697,7 @@ def route_after_assessment(state: IntakeState) -> Literal["clarify", "draft"]:
         and len(state["prior_answers"]) < MAX_CLARIFICATION_QUESTIONS
     ):
         return "clarify"
-    return "draft"
+    return "retrieve"
 
 
 def build_intake_graph() -> CompiledStateGraph[
@@ -561,6 +714,7 @@ def build_intake_graph() -> CompiledStateGraph[
     builder.add_node("extract_facts", extract_facts)
     builder.add_node("assess_completeness", assess_completeness)
     builder.add_node("compose_questions", compose_questions)
+    builder.add_node("retrieve", retrieve)
     builder.add_node("draft", draft)
     builder.add_edge(START, "translate")
     builder.add_edge("translate", "extract_facts")
@@ -568,9 +722,10 @@ def build_intake_graph() -> CompiledStateGraph[
     builder.add_conditional_edges(
         "assess_completeness",
         route_after_assessment,
-        {"clarify": "compose_questions", "draft": "draft"},
+        {"clarify": "compose_questions", "retrieve": "retrieve"},
     )
     builder.add_edge("compose_questions", END)
+    builder.add_edge("retrieve", "draft")
     builder.add_edge("draft", END)
     return builder.compile(name="safeloop_intake")
 

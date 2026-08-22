@@ -66,6 +66,27 @@ const validationErrorKeys: Record<string, string> = {
   confidence_below_threshold: "review.draft.validation.confidenceLow",
   escalation_reason_required: "review.draft.validation.escalationReasonRequired",
   suggested_action_citation_required: "review.draft.validation.actionCitationRequired",
+  citation_source_unresolved: "review.draft.validation.citationSourceUnresolved",
+  citation_quote_not_verbatim: "review.draft.validation.quoteNotVerbatim",
+  suggested_action_not_quoted: "review.draft.validation.actionNotQuoted",
+};
+
+const missingInformationKeys: Record<
+  string,
+  { message: string; term: string }
+> = {
+  approved_work_at_height_procedure: {
+    message: "review.draft.missingProcedure.workAtHeight",
+    term: "term.workAtHeight",
+  },
+  approved_electrical_safety_procedure: {
+    message: "review.draft.missingProcedure.electrical",
+    term: "term.electricalSafety",
+  },
+  approved_site_safety_procedure: {
+    message: "review.draft.missingProcedure.siteSafety",
+    term: "term.siteSafety",
+  },
 };
 
 type CorrectionField = "category" | "urgency" | "action";
@@ -423,7 +444,14 @@ export function ReviewDecisionPage({
             emptyLabel={t("review.draft.none")}
             observedFacts={report.latest_draft.observed_facts}
             assumptions={report.latest_draft.assumptions}
-            missingInformation={report.latest_draft.missing_information}
+            missingInformation={report.latest_draft.missing_information.map(
+              (item) => {
+                const translated = missingInformationKeys[item];
+                return translated
+                  ? t(translated.message, { procedure: t(translated.term) })
+                  : item;
+              },
+            )}
             validationTitle={t("review.draft.validationFailed")}
             validationErrors={report.latest_draft.validation_errors.map((code) =>
               t(validationErrorKeys[code] ?? "review.draft.validation.unknown"),
@@ -471,6 +499,47 @@ export function ReviewDecisionPage({
                 </div>
               )}
             </dl>
+            {report.latest_draft.citations.length > 0 && (
+              <section className="mt-4 border-t border-border pt-4">
+                <h3 className="text-base font-bold">
+                  {t("review.draft.references")}
+                </h3>
+                <ol className="mt-3 space-y-3">
+                  {report.latest_draft.citations.map((citation, index) => (
+                    <li
+                      className="rounded-control border border-border bg-surface p-3"
+                      key={`${citation.document_id}-${citation.section ?? ""}-${citation.page ?? ""}-${index}`}
+                    >
+                      <p className="text-sm font-bold text-ink">
+                        {t("review.draft.referenceDocument", {
+                          docRef: citation.doc_ref,
+                          revision: citation.revision,
+                        })}
+                      </p>
+                      <p className="mt-1 flex flex-wrap gap-x-3 text-sm text-inkMuted">
+                        {citation.section && (
+                          <span>
+                            {t("review.draft.referenceSection", {
+                              section: citation.section,
+                            })}
+                          </span>
+                        )}
+                        {citation.page !== null && (
+                          <span>
+                            {t("review.draft.referencePage", {
+                              page: citation.page,
+                            })}
+                          </span>
+                        )}
+                      </p>
+                      <blockquote className="mt-3 border-l-2 border-primary pl-3 text-base leading-7 text-ink">
+                        {citation.quote}
+                      </blockquote>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
           </AiBlock>
         )}
 

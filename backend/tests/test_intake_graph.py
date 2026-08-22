@@ -12,6 +12,8 @@ import pytest
 
 from app.ai import intake_graph as intake_module
 from app.ai.intake_graph import IntakeState, intake_graph, translate
+from app.ai.validator import validate_draft
+from app.domain.enums import ValidationStatus
 
 
 def state(
@@ -36,6 +38,7 @@ def state(
         "assumptions": [],
         "missing_information": [],
         "questions": [],
+        "retrieved_chunks": [],
         "draft": None,
     }
 
@@ -61,6 +64,54 @@ def test_complete_mandarin_report_has_english_and_no_gaps() -> None:
     assert draft["citations"] == []
     assert draft["suggested_action"] is None
     assert draft["provider"] == "stub"
+
+
+def test_no_retrieval_hits_produce_a_valid_draft_without_an_action() -> None:
+    result = run(state("The Level 6 edge has no guardrail."))
+    draft = cast(dict[str, object], result["draft"])
+
+    assert draft["suggested_action"] is None
+    assert draft["citations"] == []
+    assert "approved_work_at_height_procedure" in cast(
+        list[str], draft["missing_information"]
+    )
+    assert validate_draft(draft) == (ValidationStatus.VALID, [])
+
+
+def test_retrieved_chunk_produces_a_verbatim_citation_and_action() -> None:
+    input_state = state("The Level 6 edge has no guardrail.")
+    source = {
+        "content": "Inspect the edge. Workers must install guardrails before work starts.",
+        "document_id": "20000000-0000-0000-0000-000000000001",
+        "doc_ref": "WAH-001",
+        "revision": "3",
+        "section": "4.2",
+        "page": 7,
+        "similarity": 0.91,
+    }
+    input_state["retrieved_chunks"] = [source]
+
+    result = run(input_state)
+    draft = cast(dict[str, object], result["draft"])
+    citations = cast(list[dict[str, object]], draft["citations"])
+
+    assert draft["suggested_action"] == (
+        "Workers must install guardrails before work starts."
+    )
+    assert citations == [
+        {
+            "document_id": source["document_id"],
+            "doc_ref": source["doc_ref"],
+            "revision": source["revision"],
+            "section": source["section"],
+            "page": source["page"],
+            "quote": draft["suggested_action"],
+        }
+    ]
+    assert validate_draft(
+        draft,
+        citation_sources=[source],
+    ) == (ValidationStatus.VALID, [])
 
 
 def test_vague_report_has_decision_changing_gaps() -> None:
@@ -100,7 +151,9 @@ def test_round_cap_skips_questions_but_keeps_unanswered_gaps() -> None:
     assert result["questions"] == []
     assert result["missing_information"] == ["hazard_detail", "location", "activity"]
     draft = cast(dict[str, object], result["draft"])
-    assert draft["missing_information"] == ["hazard_detail", "location", "activity"]
+    draft_gaps = cast(list[str], draft["missing_information"])
+    assert draft_gaps[:3] == ["hazard_detail", "location", "activity"]
+    assert "approved_site_safety_procedure" in draft_gaps
 
 
 def test_two_prior_answers_exhaust_the_total_question_budget() -> None:

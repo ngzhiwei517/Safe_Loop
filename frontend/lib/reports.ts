@@ -60,6 +60,15 @@ export type ReviewResult = {
   corrective_action_id: string | null;
 };
 
+export type AiDraftCitation = {
+  document_id: string;
+  doc_ref: string;
+  revision: string;
+  section: string | null;
+  page: number | null;
+  quote: string;
+};
+
 export type AiDraft = {
   id: string;
   version: number;
@@ -73,7 +82,7 @@ export type AiDraft = {
   confidence: number | null;
   needs_escalation: boolean;
   escalation_reason: string | null;
-  citations: Record<string, unknown>[];
+  citations: AiDraftCitation[];
   validation: "valid" | "invalid" | null;
   validation_errors: string[];
   created_at: string;

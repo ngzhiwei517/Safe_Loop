@@ -9,11 +9,13 @@ import pytest
 from app.ai.intake_graph import DraftPayload
 from app.ai.validator import (
     ASSUMPTION_IN_OBSERVED_FACTS,
+    CITATION_QUOTE_NOT_VERBATIM,
     CONFIDENCE_BELOW_THRESHOLD,
     ESCALATION_REASON_REQUIRED,
     OBSERVED_FACTS_REQUIRED,
     PROPOSED_URGENCY_REQUIRED,
     SUGGESTED_ACTION_CITATION_REQUIRED,
+    SUGGESTED_ACTION_NOT_QUOTED,
     validate_draft,
 )
 from app.domain.enums import ValidationStatus
@@ -75,7 +77,40 @@ def test_each_gate_returns_a_machine_code(
     assert expected_error in errors
 
 
-def test_structurally_complete_citation_allows_an_action_for_phase_three() -> None:
+def citation_source(content: str) -> dict[str, object]:
+    return {
+        "document_id": "10000000-0000-0000-0000-000000000001",
+        "doc_ref": "WAH-001",
+        "revision": "3",
+        "section": "4.2",
+        "page": 7,
+        "content": content,
+    }
+
+
+def test_verified_citation_allows_a_verbatim_action() -> None:
+    draft = valid_draft()
+    draft["suggested_action"] = "Install edge protection before work starts."
+    draft["citations"] = [
+        {
+            "document_id": "10000000-0000-0000-0000-000000000001",
+            "doc_ref": "WAH-001",
+            "revision": "3",
+            "section": "4.2",
+            "page": 7,
+            "quote": "Install edge protection before work starts.",
+        }
+    ]
+
+    assert validate_draft(
+        draft,
+        citation_sources=[
+            citation_source("Install edge protection before work starts.")
+        ],
+    ) == (ValidationStatus.VALID, [])
+
+
+def test_fabricated_quote_is_rejected_with_a_specific_code() -> None:
     draft = valid_draft()
     draft["suggested_action"] = "Install a temporary guardrail."
     draft["citations"] = [
@@ -84,9 +119,60 @@ def test_structurally_complete_citation_allows_an_action_for_phase_three() -> No
             "doc_ref": "WAH-001",
             "revision": "3",
             "section": "4.2",
-            "page": "7",
+            "page": 7,
+            "quote": "Install a temporary guardrail.",
+        }
+    ]
+
+    validation, errors = validate_draft(
+        draft,
+        citation_sources=[citation_source("Inspect the edge before work starts.")],
+    )
+
+    assert validation is ValidationStatus.INVALID
+    assert CITATION_QUOTE_NOT_VERBATIM in errors
+
+
+def test_cjk_quote_matches_when_only_whitespace_differs() -> None:
+    draft = valid_draft()
+    draft["suggested_action"] = "必须安装防护栏。"
+    draft["citations"] = [
+        {
+            "document_id": "10000000-0000-0000-0000-000000000001",
+            "doc_ref": "WAH-001",
+            "revision": "3",
+            "section": "4.2",
+            "page": 7,
+            "quote": "必须\n安装防护栏。",
+        }
+    ]
+
+    assert validate_draft(
+        draft,
+        citation_sources=[citation_source("开始工作前必须安装防护栏。")],
+    ) == (ValidationStatus.VALID, [])
+
+
+def test_action_must_itself_appear_in_a_verified_quote() -> None:
+    draft = valid_draft()
+    draft["suggested_action"] = "Stop all work."
+    draft["citations"] = [
+        {
+            "document_id": "10000000-0000-0000-0000-000000000001",
+            "doc_ref": "WAH-001",
+            "revision": "3",
+            "section": "4.2",
+            "page": 7,
             "quote": "Install edge protection before work starts.",
         }
     ]
 
-    assert validate_draft(draft) == (ValidationStatus.VALID, [])
+    validation, errors = validate_draft(
+        draft,
+        citation_sources=[
+            citation_source("Install edge protection before work starts.")
+        ],
+    )
+
+    assert validation is ValidationStatus.INVALID
+    assert SUGGESTED_ACTION_NOT_QUOTED in errors

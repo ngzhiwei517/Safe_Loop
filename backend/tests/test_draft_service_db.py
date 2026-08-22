@@ -7,11 +7,12 @@ from collections.abc import Coroutine, Iterator
 import json
 import os
 from typing import Any, TypeVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
 from app.ai.intake_graph import DraftEnvelope, DraftPayload
+from app.ai.validator import CITATION_QUOTE_NOT_VERBATIM
 from app.db import close_pool, connection, init_pool
 from app.services.draft_service import append_draft
 from app.services.report_service import create_report, get_report
@@ -73,9 +74,81 @@ def envelope(provider_ref: str, *, latency_ms: int) -> DraftEnvelope:
     }
 
 
+def cited_envelope(document_id: UUID, doc_ref: str, quote: str) -> DraftEnvelope:
+    payload: DraftPayload = {
+        "observed_facts": ["Guardrail missing at Level 6"],
+        "assumptions": [],
+        "missing_information": [],
+        "proposed_category": "work_at_height",
+        "proposed_urgency": "high",
+        "suggested_owner_role": "responsible",
+        "suggested_action": quote,
+        "confidence": 0.9,
+        "needs_escalation": False,
+        "escalation_reason": None,
+        "citations": [
+            {
+                "document_id": str(document_id),
+                "doc_ref": doc_ref,
+                "revision": "1",
+                "section": "4.2",
+                "page": 7,
+                "quote": quote,
+            }
+        ],
+    }
+    return {
+        **payload,
+        "raw": json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "provider": "stub",
+        "provider_ref": "stub-citation-test",
+        "latency_ms": 3,
+        "tokens_in": 10,
+        "tokens_out": 12,
+    }
+
+
 async def cleanup(report_id: UUID) -> None:
     async with connection() as conn:
         await conn.execute("delete from reports where id = $1", report_id)
+
+
+async def create_approved_source() -> tuple[UUID, str]:
+    doc_ref = f"WAH-CITATION-{uuid4().hex}"
+    async with connection() as conn:
+        document_id = await conn.fetchval(
+            """
+            insert into documents (
+              id, title, doc_ref, revision, is_approved, effective_from
+            )
+            values ($1, 'Citation test', $2, '1', true, now())
+            returning id
+            """,
+            uuid4(),
+            doc_ref,
+        )
+        assert isinstance(document_id, UUID)
+        await conn.execute(
+            """
+            insert into document_chunks (
+              document_id, chunk_index, section, page, content
+            )
+            values ($1, 0, '4.2', 7, 'Inspect the edge before work starts.')
+            """,
+            document_id,
+        )
+        return document_id, doc_ref
+
+
+async def cleanup_with_source(report_id: UUID, document_id: UUID) -> None:
+    async with connection() as conn:
+        await conn.execute("delete from reports where id = $1", report_id)
+        await conn.execute("delete from documents where id = $1", document_id)
 
 
 def test_two_runs_append_versions_one_and_two() -> None:
@@ -148,3 +221,25 @@ def test_two_runs_append_versions_one_and_two() -> None:
         assert latest_draft["validation_errors"] == []
     finally:
         run(cleanup(report_id))
+
+
+def test_service_rejects_a_fabricated_quote_against_current_corpus() -> None:
+    report_id = run(create_report(REPORTER_ID, "Guardrail missing at Level 6"))
+    document_id, doc_ref = run(create_approved_source())
+    try:
+        draft = run(
+            append_draft(
+                report_id,
+                cited_envelope(
+                    document_id,
+                    doc_ref,
+                    "Install a temporary guardrail.",
+                ),
+            )
+        )
+
+        errors = json.loads(draft["validation_errors"])
+        assert draft["validation"] == "invalid"
+        assert CITATION_QUOTE_NOT_VERBATIM in errors
+    finally:
+        run(cleanup_with_source(report_id, document_id))
