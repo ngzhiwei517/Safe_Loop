@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 from math import ceil, floor
 import os
+from collections.abc import Callable
 from typing import Final, Protocol, TypeAlias, cast
 from uuid import UUID
 
@@ -277,7 +278,15 @@ class StubProvider:
             separators=(",", ":"),
         )
         seed = sha256(canonical_input.encode()).hexdigest()
-        fixture = _FixtureBuilder(schema_definition, seed).build(schema_definition)
+        fixture_factory = cast(
+            Callable[[dict[str, object]], dict[str, JsonValue]] | None,
+            getattr(schema, "stub_fixture", None),
+        )
+        fixture: JsonValue
+        if fixture_factory is None:
+            fixture = _FixtureBuilder(schema_definition, seed).build(schema_definition)
+        else:
+            fixture = fixture_factory(dict(variables))
         if not isinstance(fixture, dict):
             raise StubSchemaError("completion schema must produce an object")
         try:
