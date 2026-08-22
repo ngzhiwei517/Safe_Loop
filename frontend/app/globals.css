@@ -2,5 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg: #FFFBF3; --surface: #FFFFFF; --surface-sunken: #F4EFE6; --border: #EEE3D3;
+  --ink: #2B1C10; --ink-muted: #7A6A5C; --ink-inverse: #FFFFFF;
+  --primary: #F27416; --primary-strong: #E0650A; --primary-tint: #FDEFE2;
+  --success: #2E9E5B; --success-strong: #1E7A45; --success-tint: #E9F4EE; --success-surface: #F4FBF6;
+  --warning: #8A6A00; --warning-tint: #FFF4D6;
+  --danger: #CD291C; --danger-strong: #8E140F; --danger-tint: #FDECEA;
+  --r-card: 20px; --r-control: 16px; --r-chip: 999px; --r-tile: 14px;
+  --shadow: 0 1px 2px rgba(43,28,16,.04), 0 8px 24px rgba(43,28,16,.06);
+}
 :root { color-scheme: light; }
-body { margin: 0; background: #fffbf3; color: #2b1c10; font-family: Arial, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: Arial, sans-serif; }
