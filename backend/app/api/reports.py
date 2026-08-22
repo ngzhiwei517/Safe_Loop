@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
@@ -19,6 +19,12 @@ from app.services.media_service import (
     get_signed_media_urls,
     get_signed_report_media,
     register_report_media,
+)
+from app.services.intake_service import (
+    ClarificationError,
+    answer_clarification,
+    list_report_clarifications,
+    run_intake,
 )
 from app.services.report_service import (
     Actor,
@@ -79,6 +85,12 @@ class ReviewRequest(BaseModel):
     correction_reason: str | None = Field(default=None, max_length=2000)
     assignee_id: UUID | None = None
     due_at: datetime | None = None
+
+
+class ClarificationAnswerRequest(BaseModel):
+    """Carry reporter-supplied text for one pending clarification."""
+
+    answer: str = Field(max_length=4000)
 
 
 _REVIEW_DECISION_BY_EVENT = {
@@ -171,6 +183,24 @@ def report_draft_error(error: ReportDraftError) -> HTTPException:
         "report_not_found": status.HTTP_404_NOT_FOUND,
         "report_forbidden": status.HTTP_403_FORBIDDEN,
         "draft_update_forbidden": status.HTTP_409_CONFLICT,
+    }
+    return HTTPException(
+        code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        {"code": error.code, "message": error.message},
+    )
+
+
+def clarification_error(error: ClarificationError) -> HTTPException:
+    """Map clarification failures to localisable machine codes."""
+    code_status = {
+        "report_not_found": status.HTTP_404_NOT_FOUND,
+        "clarification_not_found": status.HTTP_404_NOT_FOUND,
+        "clarification_actor_forbidden": status.HTTP_403_FORBIDDEN,
+        "clarification_forbidden": status.HTTP_403_FORBIDDEN,
+        "clarification_answer_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "report_not_clarifying": status.HTTP_409_CONFLICT,
+        "clarification_already_answered": status.HTTP_409_CONFLICT,
+        "clarification_round_invalid": status.HTTP_409_CONFLICT,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -280,11 +310,13 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
     try:
         assert_report_readable(report, actor)
         media = await get_signed_report_media(report_id)
+        clarifications = await list_report_clarifications(report_id)
     except MediaError as error:
         raise media_error(error) from error
     source = ReportStatus(report["status"])
     result = dict(report)
     result["media"] = media
+    result["clarifications"] = [dict(row) for row in clarifications]
     available: list[dict[str, object]] = []
     for target in allowed_targets(source, actor.actor_type, actor.role):
         transition = find(source, target)
@@ -383,6 +415,7 @@ async def report_timeline(report_id: UUID, actor: Actor = Depends(current_actor)
 async def post_transition(
     report_id: UUID,
     payload: TransitionRequest,
+    background_tasks: BackgroundTasks,
     actor: Actor = Depends(current_actor),
 ) -> dict[str, object]:
     """Apply one legal transition through the sole status-writing service."""
@@ -402,4 +435,39 @@ async def post_transition(
         raise media_error(error) from error
     except TransitionError as error:
         raise transition_error(error) from error
+    if payload.target is ReportStatus.SUBMITTED:
+        background_tasks.add_task(run_intake, report_id)
     return cast(dict[str, object], jsonable_encoder(dict(report)))
+
+
+@router.post("/{report_id}/clarifications/{clarification_id}/answer")
+async def post_clarification_answer(
+    report_id: UUID,
+    clarification_id: UUID,
+    payload: ClarificationAnswerRequest,
+    background_tasks: BackgroundTasks,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Store one answer and resume intake after the active round is complete."""
+    try:
+        result = await answer_clarification(
+            report_id,
+            clarification_id,
+            actor,
+            payload.answer,
+        )
+    except ClarificationError as error:
+        raise clarification_error(error) from error
+    if result.rerun:
+        background_tasks.add_task(run_intake, report_id)
+    return cast(
+        dict[str, object],
+        jsonable_encoder(
+            {
+                "id": result.clarification["id"],
+                "report_id": result.clarification["report_id"],
+                "answered_at": result.clarification["answered_at"],
+                "round_complete": result.rerun,
+            }
+        ),
+    )

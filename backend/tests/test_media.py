@@ -206,8 +206,16 @@ def test_reviewer_report_read_includes_signed_media(
             }
         ]
 
+    async def fake_clarifications(_: UUID) -> list[dict[str, object]]:
+        return []
+
     monkeypatch.setattr(reports_api, "get_report", fake_report)
     monkeypatch.setattr(reports_api, "get_signed_report_media", fake_media)
+    monkeypatch.setattr(
+        reports_api,
+        "list_report_clarifications",
+        fake_clarifications,
+    )
     result = asyncio.run(
         reports_api.report_detail(
             REPORT_ID,

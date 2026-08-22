@@ -17,12 +17,14 @@ def state(
     description: str,
     *,
     locale: Literal["en", "zh-CN"] = "en",
+    preferred_locale: Literal["en", "zh-CN"] | None = None,
     location: str | None = "Level 6 edge",
     activity: str | None = "Formwork",
 ) -> IntakeState:
     return {
         "report_id": "10000000-0000-0000-0000-000000000001",
         "lang_original": locale,
+        "preferred_lang": preferred_locale or locale,
         "description_original": description,
         "description_en": None,
         "location": location,
@@ -57,6 +59,60 @@ def test_vague_report_has_decision_changing_gaps() -> None:
     result = run(state("Unsafe", location=None, activity=None))
 
     assert result["missing_information"] == ["hazard_detail", "location", "activity"]
+    questions = cast(list[dict[str, str]], result["questions"])
+    assert len(questions) == 2
+    assert [question["gap"] for question in questions] == ["hazard_detail", "location"]
+
+
+def test_questions_use_the_reporters_preferred_language() -> None:
+    result = run(
+        state(
+            "Unsafe",
+            preferred_locale="zh-CN",
+            location=None,
+            activity=None,
+        )
+    )
+    questions = cast(list[dict[str, str]], result["questions"])
+
+    assert len(questions) == 2
+    assert all(
+        any("\u4e00" <= character <= "\u9fff" for character in question["text"])
+        for question in questions
+    )
+    assert all(question["gap"] in result["missing_information"] for question in questions)
+
+
+def test_round_cap_skips_questions_but_keeps_unanswered_gaps() -> None:
+    input_state = state("Unsafe", location=None, activity=None)
+    input_state["round"] = 2
+
+    result = run(input_state)
+
+    assert result["questions"] == []
+    assert result["missing_information"] == ["hazard_detail", "location", "activity"]
+
+
+def test_two_prior_answers_exhaust_the_total_question_budget() -> None:
+    input_state = state("Unsafe", location=None, activity=None)
+    input_state["round"] = 1
+    input_state["prior_answers"] = [
+        {
+            "gap": "hazard_detail",
+            "question": "What exactly is unsafe?",
+            "answer": "Loose materials",
+        },
+        {
+            "gap": "location",
+            "question": "Where exactly is the hazard?",
+            "answer": "Level 6",
+        },
+    ]
+
+    result = run(input_state)
+
+    assert result["questions"] == []
+    assert result["missing_information"] == ["activity"]
 
 
 def test_inference_is_an_assumption_and_never_an_observed_fact() -> None:

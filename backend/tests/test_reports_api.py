@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 import pytest
 
 from app.api import reports as reports_api
@@ -38,8 +38,16 @@ def configure_report_read(
     async def fake_media(_: UUID) -> list[dict[str, object]]:
         return []
 
+    async def fake_clarifications(_: UUID) -> list[dict[str, object]]:
+        return []
+
     monkeypatch.setattr(reports_api, "get_report", fake_report)
     monkeypatch.setattr(reports_api, "get_signed_report_media", fake_media)
+    monkeypatch.setattr(
+        reports_api,
+        "list_report_clarifications",
+        fake_clarifications,
+    )
 
 
 def test_available_transitions_differ_without_client_role_logic(
@@ -168,12 +176,74 @@ def test_transition_endpoint_refuses_a_different_reporter(
             reports_api.post_transition(
                 REPORT_ID,
                 TransitionRequest(target=ReportStatus.SUBMITTED),
+                BackgroundTasks(),
                 Actor(ActorType.HUMAN, OTHER_REPORTER_ID, Role.REPORTER),
             )
         )
 
     assert error.value.status_code == 403
     assert error.value.detail["code"] == "report_forbidden"
+
+
+def test_successful_submission_schedules_intake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_report_read(monkeypatch, status="draft")
+
+    async def fake_transition(*_: object, **__: object) -> dict[str, object]:
+        return {"id": REPORT_ID, "status": "submitted"}
+
+    monkeypatch.setattr(reports_api, "transition_report", fake_transition)
+    background_tasks = BackgroundTasks()
+
+    asyncio.run(
+        reports_api.post_transition(
+            REPORT_ID,
+            TransitionRequest(target=ReportStatus.SUBMITTED),
+            background_tasks,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+        )
+    )
+
+    assert len(background_tasks.tasks) == 1
+    assert background_tasks.tasks[0].func is reports_api.run_intake
+    assert background_tasks.tasks[0].args == (REPORT_ID,)
+
+
+def test_answer_endpoint_schedules_intake_after_round_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clarification_id = UUID("30000000-0000-0000-0000-000000000001")
+
+    class StoredAnswer:
+        clarification = {
+            "id": clarification_id,
+            "report_id": REPORT_ID,
+            "answered_at": None,
+        }
+        rerun = True
+
+    async def fake_answer(*_: object, **__: object) -> StoredAnswer:
+        return StoredAnswer()
+
+    monkeypatch.setattr(reports_api, "answer_clarification", fake_answer)
+    background_tasks = BackgroundTasks()
+
+    result = asyncio.run(
+        reports_api.post_clarification_answer(
+            REPORT_ID,
+            clarification_id,
+            reports_api.ClarificationAnswerRequest(answer="Level 6 east edge"),
+            background_tasks,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+        )
+    )
+
+    assert result["id"] == str(clarification_id)
+    assert result["round_complete"] is True
+    assert len(background_tasks.tasks) == 1
+    assert background_tasks.tasks[0].func is reports_api.run_intake
+    assert background_tasks.tasks[0].args == (REPORT_ID,)
 
 
 def test_every_state_machine_event_has_action_and_timeline_catalogue_keys() -> None:

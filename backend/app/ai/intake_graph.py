@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from typing import Literal, TypedDict, cast
+from typing import Final, Literal, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.ai.provider import JsonValue, get_provider
 
@@ -15,12 +15,13 @@ from app.ai.provider import JsonValue, get_provider
 class PriorAnswer(TypedDict):
     """Keep prior human clarification text JSON-serialisable."""
 
+    gap: str
     question: str
     answer: str
 
 
 class IntakeQuestion(TypedDict):
-    """Reserve the next step's question shape without composing one here."""
+    """Tie reporter-facing clarification text to one decision-changing gap."""
 
     gap: str
     text: str
@@ -31,6 +32,7 @@ class IntakeState(TypedDict):
 
     report_id: str
     lang_original: Literal["en", "zh-CN"]
+    preferred_lang: Literal["en", "zh-CN"]
     description_original: str
     description_en: str | None
     location: str | None
@@ -44,6 +46,11 @@ class IntakeState(TypedDict):
     draft: dict[str, JsonValue] | None
 
 
+MAX_CLARIFICATION_ROUNDS: Final = 2
+MAX_QUESTIONS_PER_ROUND: Final = 2
+MAX_CLARIFICATION_QUESTIONS: Final = 2
+
+
 def _text(variables: dict[str, object], name: str) -> str:
     value = variables.get(name)
     return value if isinstance(value, str) else ""
@@ -54,6 +61,21 @@ def _string_list(variables: dict[str, object], name: str) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str)]
+
+
+def _answered_gaps(variables: dict[str, object]) -> set[str]:
+    value = variables.get("prior_answers")
+    if not isinstance(value, list):
+        return set()
+    answered: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        gap = item.get("gap")
+        answer = item.get("answer")
+        if isinstance(gap, str) and isinstance(answer, str) and answer.strip():
+            answered.add(gap)
+    return answered
 
 
 _TRANSLATION_REPLACEMENTS = (
@@ -152,6 +174,7 @@ def _stub_gaps(
     location: str,
     activity: str,
     observed_facts: list[str],
+    answered_gaps: set[str],
 ) -> list[str]:
     normalised = description.casefold().strip()
     gaps: list[str] = []
@@ -165,7 +188,37 @@ def _stub_gaps(
         gaps.append("location")
     if not activity.strip() and not any(term in normalised for term in _ACTIVITY_TERMS):
         gaps.append("activity")
-    return gaps
+    return [gap for gap in gaps if gap not in answered_gaps]
+
+
+_QUESTION_COPY: Final = {
+    "en": {
+        "hazard_detail": "What exactly is unsafe?",
+        "location": "Where exactly is the hazard?",
+        "activity": "What work is happening nearby?",
+    },
+    "zh-CN": {
+        "hazard_detail": "具体有什么危险？",
+        "location": "危险具体在哪里？",
+        "activity": "附近正在进行什么工作？",
+    },
+}
+
+
+def _stub_questions(
+    gaps: list[str],
+    preferred_lang: str,
+    question_limit: int,
+) -> list[dict[str, JsonValue]]:
+    locale = preferred_lang if preferred_lang in _QUESTION_COPY else "en"
+    catalogue = _QUESTION_COPY[locale]
+    fallback = "Please add this detail: {gap}." if locale == "en" else "请补充这项信息：{gap}。"
+    questions: list[dict[str, JsonValue]] = []
+    for gap in gaps[:question_limit]:
+        questions.append(
+            {"gap": gap, "text": catalogue.get(gap, fallback.format(gap=gap))}
+        )
+    return questions
 
 
 class TranslationResult(BaseModel):
@@ -202,11 +255,42 @@ class CompletenessResult(BaseModel):
                 _text(variables, "location"),
                 _text(variables, "activity"),
                 _string_list(variables, "observed_facts"),
+                _answered_gaps(variables),
             )
         )
         return {
             "missing_information": gaps,
         }
+
+
+class ComposedQuestion(BaseModel):
+    gap: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+
+class QuestionCompositionResult(BaseModel):
+    questions: list[ComposedQuestion] = Field(
+        min_length=1,
+        max_length=MAX_QUESTIONS_PER_ROUND,
+    )
+
+    @classmethod
+    def stub_fixture(cls, variables: dict[str, object]) -> dict[str, JsonValue]:
+        questions: list[JsonValue] = list(
+            _stub_questions(
+                _string_list(variables, "missing_information"),
+                _text(variables, "preferred_lang"),
+                min(
+                    MAX_QUESTIONS_PER_ROUND,
+                    max(
+                        0,
+                        MAX_CLARIFICATION_QUESTIONS
+                        - len(_answered_gaps(variables)),
+                    ),
+                ),
+            )
+        )
+        return {"questions": questions}
 
 
 def _result_string(data: dict[str, JsonValue], name: str) -> str:
@@ -221,6 +305,22 @@ def _result_strings(data: dict[str, JsonValue], name: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise TypeError("provider result field is not a string list")
     return cast(list[str], value)
+
+
+def _result_questions(data: dict[str, JsonValue]) -> list[IntakeQuestion]:
+    value = data.get("questions")
+    if not isinstance(value, list):
+        raise TypeError("provider result questions field is not a list")
+    questions: list[IntakeQuestion] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise TypeError("provider result question is not an object")
+        gap = item.get("gap")
+        text = item.get("text")
+        if not isinstance(gap, str) or not isinstance(text, str):
+            raise TypeError("provider result question fields are not strings")
+        questions.append({"gap": gap, "text": text})
+    return questions
 
 
 async def translate(state: IntakeState) -> dict[str, object]:
@@ -268,6 +368,7 @@ async def assess_completeness(state: IntakeState) -> dict[str, object]:
             "activity": state["activity"],
             "observed_facts": state["observed_facts"],
             "assumptions": state["assumptions"],
+            "prior_answers": state["prior_answers"],
         },
         schema=CompletenessResult,
     )
@@ -279,24 +380,63 @@ async def assess_completeness(state: IntakeState) -> dict[str, object]:
     }
 
 
+async def compose_questions(state: IntakeState) -> dict[str, object]:
+    """Ask only about specific unresolved gaps in the reporter's language."""
+    result = await get_provider().complete(
+        "compose_questions",
+        {
+            "missing_information": state["missing_information"],
+            "preferred_lang": state["preferred_lang"],
+            "prior_answers": state["prior_answers"],
+        },
+        schema=QuestionCompositionResult,
+    )
+    questions = _result_questions(result.data)
+    unresolved = set(state["missing_information"])
+    if len(questions) > MAX_QUESTIONS_PER_ROUND or any(
+        question["gap"] not in unresolved for question in questions
+    ):
+        raise ValueError("composed questions must map to unresolved gaps")
+    if len({question["gap"] for question in questions}) != len(questions):
+        raise ValueError("composed questions must address distinct gaps")
+    return {"questions": questions}
+
+
+def route_after_assessment(state: IntakeState) -> Literal["clarify", "draft"]:
+    """Stop asking at the durable two-round safety boundary."""
+    if (
+        state["missing_information"]
+        and state["round"] < MAX_CLARIFICATION_ROUNDS
+        and len(state["prior_answers"]) < MAX_CLARIFICATION_QUESTIONS
+    ):
+        return "clarify"
+    return "draft"
+
+
 def build_intake_graph() -> CompiledStateGraph[
     IntakeState,
     None,
     IntakeState,
     IntakeState,
 ]:
-    """Compile only the three nodes included in this phase step."""
+    """Compile the restartable intake stages through clarification routing."""
     builder: StateGraph[IntakeState, None, IntakeState, IntakeState] = StateGraph(
         IntakeState
     )
     builder.add_node("translate", translate)
     builder.add_node("extract_facts", extract_facts)
     builder.add_node("assess_completeness", assess_completeness)
+    builder.add_node("compose_questions", compose_questions)
     builder.add_edge(START, "translate")
     builder.add_edge("translate", "extract_facts")
     builder.add_edge("extract_facts", "assess_completeness")
-    builder.add_edge("assess_completeness", END)
-    return builder.compile(name="safeloop_intake_first_pass")
+    builder.add_conditional_edges(
+        "assess_completeness",
+        route_after_assessment,
+        {"clarify": "compose_questions", "draft": END},
+    )
+    builder.add_edge("compose_questions", END)
+    return builder.compile(name="safeloop_intake")
 
 
 intake_graph = build_intake_graph()
