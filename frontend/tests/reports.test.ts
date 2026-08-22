@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "../lib/api";
 import { defaultLocale } from "../lib/locales";
-import { fileReport, listReports, type NewReportInput } from "../lib/reports";
+import {
+  fileReport,
+  listReports,
+  reviewReport,
+  type NewReportInput,
+  type ReviewInput,
+} from "../lib/reports";
 import { reportStatus } from "../lib/stateMachine";
 
 vi.mock("../lib/api", () => ({ apiFetch: vi.fn() }));
@@ -107,6 +113,32 @@ describe("fileReport", () => {
     expect(apiFetch).toHaveBeenCalledWith(
       "/reports?status=under_review&urgency=critical&assignee=00000000-0000-0000-0000-000000000004&q=Tower+A&cursor=opaque-cursor&limit=25",
       "test-token",
+    );
+  });
+
+  it("sends the complete review payload to the atomic endpoint", async () => {
+    const review: ReviewInput = {
+      decision: "approve",
+      target: reportStatus.action_assigned,
+      corrected_action: "Install secured guardrails.",
+      correction_reason: "The action was missing.",
+      assignee_id: "00000000-0000-0000-0000-000000000004",
+      due_at: "2026-08-25T04:00:00.000Z",
+    };
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      review_id: "review-id",
+      report_id: "report-id",
+      status: reportStatus.action_assigned,
+      assignment_id: "assignment-id",
+      corrective_action_id: "action-id",
+    });
+
+    await reviewReport("report-id", review, "test-token");
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/reports/report-id/review",
+      "test-token",
+      { method: "POST", body: JSON.stringify(review) },
     );
   });
 });

@@ -10,7 +10,7 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, accessToken: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://127.0.0.1:8000"}${path}`, {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/backend"}${path}`, {
     ...init,
     headers: {
       ...init?.headers,

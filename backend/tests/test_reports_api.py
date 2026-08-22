@@ -11,10 +11,11 @@ from fastapi import HTTPException
 import pytest
 
 from app.api import reports as reports_api
-from app.api.reports import TransitionRequest
-from app.domain.enums import ActorType, ReportStatus, Role
+from app.api.reports import ReviewRequest, TransitionRequest
+from app.domain.enums import ActorType, ReportStatus, ReviewDecision, Role
 from app.domain.transitions import TRANSITIONS
 from app.services.report_service import Actor
+from app.services.review_service import ReviewResult
 
 REPORT_ID = UUID("10000000-0000-0000-0000-000000000001")
 REPORTER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -61,19 +62,73 @@ def test_available_transitions_differ_without_client_role_logic(
 
     assert reporter_result["available_transitions"] == []
     assert reviewer_result["available_transitions"] == [
-        {"event": "reject", "target": "rejected", "requires_reason": True},
+        {
+            "event": "reject",
+            "target": "rejected",
+            "requires_reason": True,
+            "review_decision": "reject",
+        },
         {
             "event": "request_info",
             "target": "info_requested",
             "requires_reason": True,
+            "review_decision": "request_info",
         },
-        {"event": "escalate", "target": "escalated", "requires_reason": True},
+        {
+            "event": "escalate",
+            "target": "escalated",
+            "requires_reason": True,
+            "review_decision": "escalate",
+        },
         {
             "event": "approve_action",
             "target": "action_assigned",
             "requires_reason": False,
+            "review_decision": "approve",
         },
     ]
+
+
+def test_review_endpoint_passes_the_atomic_payload_to_the_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_review(report_id: UUID, actor: Actor, **values: object) -> ReviewResult:
+        captured.update({"report_id": report_id, "actor": actor, **values})
+        return ReviewResult(
+            review={"id": UUID("20000000-0000-0000-0000-000000000001")},  # type: ignore[arg-type]
+            report={"id": report_id, "status": "info_requested"},  # type: ignore[arg-type]
+            assignment_id=None,
+            corrective_action_id=None,
+        )
+
+    monkeypatch.setattr(reports_api, "review_report", fake_review)
+    actor = Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER)
+    payload = ReviewRequest(
+        decision=ReviewDecision.REQUEST_INFO,
+        target=ReportStatus.INFO_REQUESTED,
+        reason="Confirm the exclusion zone.",
+        corrected_category="edge protection",
+        correction_reason="Category was too broad.",
+    )
+
+    result = asyncio.run(reports_api.post_review(REPORT_ID, payload, actor))
+
+    assert result == {
+        "review_id": "20000000-0000-0000-0000-000000000001",
+        "report_id": str(REPORT_ID),
+        "status": "info_requested",
+        "assignment_id": None,
+        "corrective_action_id": None,
+    }
+    assert captured["report_id"] == REPORT_ID
+    assert captured["actor"] == actor
+    assert captured["decision"] is ReviewDecision.REQUEST_INFO
+    assert captured["target"] is ReportStatus.INFO_REQUESTED
+    assert captured["reason"] == "Confirm the exclusion zone."
+    assert captured["corrected_category"] == "edge protection"
+    assert captured["correction_reason"] == "Category was too broad."
 
 
 def test_timeline_read_uses_the_same_report_authorisation(

@@ -82,6 +82,11 @@ describe("ReviewQueue", () => {
     expect(screen.getAllByText(en["urgency.critical"])).toHaveLength(2);
     expect(screen.getAllByText(en["status.under_review"])).toHaveLength(2);
     expect(screen.getByText("Rework 2")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: new RegExp(queueItem.summary) })
+        .getAttribute("href"),
+    ).toBe(`/${defaultLocale}/review/${queueItem.id}`);
     expect(listReports).toHaveBeenCalledWith(
       { status: reportStatus.under_review, urgency: undefined, q: undefined, cursor: undefined },
       "test-token",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
@@ -10,7 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from app.api.deps import current_actor
-from app.domain.enums import InputMode, MediaPhase, ReportStatus, Urgency
+from app.domain.enums import InputMode, MediaPhase, ReportStatus, ReviewDecision, Urgency
 from app.domain.transitions import TransitionError, allowed_targets, find
 from app.services.media_service import (
     MediaError,
@@ -28,6 +29,7 @@ from app.services.report_service import (
     list_reports,
     transition_report,
 )
+from app.services.review_service import ReviewError, review_report
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -63,6 +65,30 @@ class RegisterMediaRequest(BaseModel):
     caption: str | None = Field(default=None, max_length=500)
 
 
+class ReviewRequest(BaseModel):
+    """Capture one reviewer decision and its optional correction diff."""
+
+    decision: ReviewDecision
+    target: ReportStatus
+    reason: str | None = None
+    corrected_category: str | None = Field(default=None, max_length=200)
+    corrected_urgency: Urgency | None = None
+    corrected_action: str | None = Field(default=None, max_length=4000)
+    correction_reason: str | None = Field(default=None, max_length=2000)
+    assignee_id: UUID | None = None
+    due_at: datetime | None = None
+
+
+_REVIEW_DECISION_BY_EVENT = {
+    "approve_action": ReviewDecision.APPROVE,
+    "approve_after_escalation": ReviewDecision.APPROVE,
+    "request_info": ReviewDecision.REQUEST_INFO,
+    "escalate": ReviewDecision.ESCALATE,
+    "reject": ReviewDecision.REJECT,
+    "reject_after_escalation": ReviewDecision.REJECT,
+}
+
+
 def transition_error(error: TransitionError) -> HTTPException:
     """Map machine error codes to the HTTP contract without user-facing prose."""
     code_status = {
@@ -71,8 +97,28 @@ def transition_error(error: TransitionError) -> HTTPException:
         "role_not_permitted": status.HTTP_403_FORBIDDEN,
         "actor_not_permitted": status.HTTP_403_FORBIDDEN,
         "reason_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "assignment_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
         "unknown_event": status.HTTP_400_BAD_REQUEST,
         "database_guard": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    }
+    return HTTPException(
+        code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        {"code": error.code, "message": error.message},
+    )
+
+
+def review_error(error: ReviewError) -> HTTPException:
+    """Map atomic-review failures to localisable machine codes."""
+    code_status = {
+        "report_not_found": status.HTTP_404_NOT_FOUND,
+        "review_actor_not_permitted": status.HTTP_403_FORBIDDEN,
+        "review_target_mismatch": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "review_correction_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "correction_reason_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "assignment_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "due_at_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "assignee_not_responsible": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "active_assignment_exists": status.HTTP_409_CONFLICT,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -197,18 +243,20 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
     source = ReportStatus(report["status"])
     result = dict(report)
     result["media"] = media
-    available = []
+    available: list[dict[str, object]] = []
     for target in allowed_targets(source, actor.actor_type, actor.role):
         transition = find(source, target)
         if transition is None:
             raise RuntimeError("allowed state-machine target has no transition")
-        available.append(
-            {
-                "event": transition.event,
-                "target": transition.target.value,
-                "requires_reason": transition.requires_reason,
-            }
-        )
+        transition_payload: dict[str, object] = {
+            "event": transition.event,
+            "target": transition.target.value,
+            "requires_reason": transition.requires_reason,
+        }
+        decision = _REVIEW_DECISION_BY_EVENT.get(transition.event)
+        if decision is not None:
+            transition_payload["review_decision"] = decision.value
+        available.append(transition_payload)
     result["available_transitions"] = available
     return cast(dict[str, object], jsonable_encoder(result))
 
@@ -232,6 +280,45 @@ async def post_report_media(
     except MediaError as error:
         raise media_error(error) from error
     return cast(dict[str, object], jsonable_encoder(dict(media)))
+
+
+@router.post("/{report_id}/review")
+async def post_review(
+    report_id: UUID,
+    payload: ReviewRequest,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Commit the review row and its transition through the sole status writer."""
+    try:
+        result = await review_report(
+            report_id,
+            actor,
+            decision=payload.decision,
+            target=payload.target,
+            reason=payload.reason,
+            corrected_category=payload.corrected_category,
+            corrected_urgency=payload.corrected_urgency,
+            corrected_action=payload.corrected_action,
+            correction_reason=payload.correction_reason,
+            assignee_id=payload.assignee_id,
+            due_at=payload.due_at,
+        )
+    except ReviewError as error:
+        raise review_error(error) from error
+    except TransitionError as error:
+        raise transition_error(error) from error
+    return cast(
+        dict[str, object],
+        jsonable_encoder(
+            {
+                "review_id": result.review["id"],
+                "report_id": result.report["id"],
+                "status": result.report["status"],
+                "assignment_id": result.assignment_id,
+                "corrective_action_id": result.corrective_action_id,
+            }
+        ),
+    )
 
 
 @router.get("/{report_id}/timeline")

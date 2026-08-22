@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 from binascii import Error as BinasciiError
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -11,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from asyncpg.pool import PoolConnectionProxy
 
 from app.db import connection
 from app.domain.enums import ActorType, InputMode, ReportStatus, Role, Urgency
@@ -305,6 +308,17 @@ async def get_timeline(report_id: UUID) -> list[asyncpg.Record]:
         )
 
 
+@asynccontextmanager
+async def _transition_connection(
+    existing: PoolConnectionProxy[asyncpg.Record] | None,
+) -> AsyncIterator[PoolConnectionProxy[asyncpg.Record]]:
+    if existing is not None:
+        yield existing
+        return
+    async with connection() as conn:
+        yield conn
+
+
 async def transition_report(
     report_id: UUID,
     target: ReportStatus,
@@ -312,9 +326,10 @@ async def transition_report(
     *,
     reason: str | None = None,
     metadata: dict[str, Any] | None = None,
+    transaction_connection: PoolConnectionProxy[asyncpg.Record] | None = None,
 ) -> asyncpg.Record:
     """Apply one state-machine edge and its audit row in one transaction."""
-    async with connection() as conn:
+    async with _transition_connection(transaction_connection) as conn:
         try:
             async with conn.transaction():
                 report = await conn.fetchrow(
@@ -325,6 +340,25 @@ async def transition_report(
 
                 source = ReportStatus(report["status"])
                 transition = assert_can(source, target, actor.actor_type, actor.role, reason)
+                if target is ReportStatus.ACTION_ASSIGNED:
+                    assignment_ready = await conn.fetchval(
+                        """
+                        select exists (
+                          select 1
+                          from report_assignments assignment
+                          join corrective_actions action
+                            on action.assignment_id = assignment.id
+                           and action.report_id = assignment.report_id
+                          where assignment.report_id = $1 and assignment.active
+                        )
+                        """,
+                        report_id,
+                    )
+                    if not assignment_ready:
+                        raise TransitionError(
+                            "assignment_required",
+                            "action assignment and corrective action are required",
+                        )
                 await conn.execute(
                     "SELECT set_config('safeloop.actor_type', $1, true)",
                     actor.actor_type.value,

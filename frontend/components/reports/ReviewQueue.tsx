@@ -217,7 +217,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
             {items.map((report) => (
               <Link
                 className="block rounded-card outline-none focus:ring-2 focus:ring-primaryStrong focus:ring-offset-2 focus:ring-offset-bg"
-                href={`/${locale}/report/${report.id}`}
+                href={`/${locale}/review/${report.id}`}
                 key={report.id}
               >
                 <Card className={`flex gap-4 ${urgencyBorder[report.urgency]}`}>

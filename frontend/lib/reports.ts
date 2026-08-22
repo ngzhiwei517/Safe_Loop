@@ -34,6 +34,30 @@ export type AvailableTransition = {
   event: string;
   target: ReportStatus;
   requires_reason: boolean;
+  review_decision?: ReviewDecision;
+};
+
+export const reviewDecisions = ["approve", "request_info", "escalate", "reject"] as const;
+export type ReviewDecision = (typeof reviewDecisions)[number];
+
+export type ReviewInput = {
+  decision: ReviewDecision;
+  target: ReportStatus;
+  reason?: string;
+  corrected_category?: string;
+  corrected_urgency?: Urgency;
+  corrected_action?: string;
+  correction_reason?: string;
+  assignee_id?: string;
+  due_at?: string;
+};
+
+export type ReviewResult = {
+  review_id: string;
+  report_id: string;
+  status: ReportStatus;
+  assignment_id: string | null;
+  corrective_action_id: string | null;
 };
 
 export type ReportDetail = {
@@ -145,4 +169,15 @@ export function transitionReport(
       body: JSON.stringify({ target, reason }),
     },
   );
+}
+
+export function reviewReport(
+  reportId: string,
+  input: ReviewInput,
+  accessToken: string,
+): Promise<ReviewResult> {
+  return apiFetch<ReviewResult>(`/reports/${reportId}/review`, accessToken, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
