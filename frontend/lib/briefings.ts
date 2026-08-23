@@ -1,4 +1,4 @@
-import { apiFetch } from "./api";
+import { apiFetch, publicApiFetch } from "./api";
 import type { Locale } from "./locales";
 
 export type LocaleText = Record<Locale, string>;
@@ -55,6 +55,40 @@ export type BriefingEditPayload = {
   }>;
 };
 
+export type PublicQuizQuestion = {
+  id: string;
+  position: number;
+  question: LocaleText;
+  explanation: LocaleText;
+  options: LocaleText[];
+};
+
+export type PublicBriefing = {
+  id: string;
+  version: number;
+  body: LocaleText;
+  target_activity: string | null;
+  target_location: string | null;
+  valid_from: string;
+  valid_to: string;
+  approved_at: string;
+  quiz_questions: PublicQuizQuestion[];
+};
+
+export type QuizAnswerResult = {
+  response_id: string;
+  is_correct: boolean;
+  correct_option: number;
+};
+
+export type LearningBriefing = Omit<PublicBriefing, "quiz_questions"> & {
+  qr_token: string;
+  target_match: boolean;
+  question_count: number;
+  answered_count: number;
+  quiz_answered: boolean;
+};
+
 export function listManagedBriefings(accessToken: string): Promise<ManagedBriefing[]> {
   return apiFetch<ManagedBriefing[]>("/briefings/manage", accessToken);
 }
@@ -84,4 +118,28 @@ export function publishManagedBriefing(
   return apiFetch<ManagedBriefing>(`/briefings/manage/${briefingId}/publish`, accessToken, {
     method: "POST",
   });
+}
+
+export function getPublicBriefing(token: string): Promise<PublicBriefing> {
+  return publicApiFetch<PublicBriefing>(`/briefings/${encodeURIComponent(token)}`);
+}
+
+export function submitQuizAnswer(
+  token: string,
+  questionId: string,
+  selectedOption: number,
+  accessToken?: string,
+): Promise<QuizAnswerResult> {
+  return publicApiFetch<QuizAnswerResult>(
+    `/briefings/${encodeURIComponent(token)}/quiz`,
+    {
+      method: "POST",
+      body: JSON.stringify({ question_id: questionId, selected_option: selectedOption }),
+    },
+    accessToken,
+  );
+}
+
+export function listLearningBriefings(accessToken: string): Promise<LearningBriefing[]> {
+  return apiFetch<LearningBriefing[]>("/briefings", accessToken);
 }

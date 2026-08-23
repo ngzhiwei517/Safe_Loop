@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     documents_max_bytes: int = 25 * 1024 * 1024
     alert_escalate_minutes: int = 5
     overdue_notification_hour: int = Field(default=8, ge=0, le=23)
+    quiz_rate_limit_per_minute: int = Field(default=30, ge=1, le=300)
     frontend_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

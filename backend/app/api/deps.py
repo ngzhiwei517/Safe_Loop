@@ -201,3 +201,14 @@ async def current_actor(
         if authorization is None:
             return _debug_actor(x_debug_user, x_debug_role)
     return await _jwt_actor(authorization)
+
+
+async def optional_actor(
+    authorization: str | None = Header(default=None),
+    x_debug_user: str | None = Header(default=None),
+    x_debug_role: str | None = Header(default=None),
+) -> Actor | None:
+    """Resolve an identity when supplied while keeping public lesson routes anonymous."""
+    if authorization is None and x_debug_user is None and x_debug_role is None:
+        return None
+    return await current_actor(authorization, x_debug_user, x_debug_role)

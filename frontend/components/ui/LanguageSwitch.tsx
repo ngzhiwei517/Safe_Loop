@@ -7,15 +7,17 @@ import { createClient } from "../../lib/supabase/browser";
 
 type Option = { value: Locale; label: string };
 
-export function LanguageSwitch({ current, options, label, onChange }: { current: Locale; options: Option[]; label: string; onChange?: (value: Locale) => void }) {
+export function LanguageSwitch({ current, options, label, onChange, persistProfile = true }: { current: Locale; options: Option[]; label: string; onChange?: (value: Locale) => void; persistProfile?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
 
   async function switchLocale(nextLocale: Locale) {
     document.cookie = `${localeCookieName}=${encodeURIComponent(nextLocale)}; Path=/; Max-Age=31536000; SameSite=Lax`;
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) await supabase.from("profiles").update({ preferred_lang: nextLocale }).eq("id", user.id);
+    if (persistProfile) {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await supabase.from("profiles").update({ preferred_lang: nextLocale }).eq("id", user.id);
+    }
     onChange?.(nextLocale);
     const segments = pathname.split("/");
     segments[1] = nextLocale;

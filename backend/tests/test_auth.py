@@ -150,3 +150,7 @@ def test_debug_headers_work_only_in_local(monkeypatch: pytest.MonkeyPatch) -> No
         )
     )
     assert actor.role == Role.REPORTER
+
+
+def test_public_route_can_resolve_no_actor_without_touching_auth() -> None:
+    assert asyncio.run(deps.optional_actor(None, None, None)) is None

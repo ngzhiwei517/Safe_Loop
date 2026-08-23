@@ -13,6 +13,7 @@ from app.api.briefings import router as briefings_router
 from app.api.documents import router as documents_router
 from app.api.metrics import router as metrics_router
 from app.api.notifications import router as notifications_router
+from app.api.learning import router as learning_router
 from app.config import get_settings
 from app.api.reports import router as reports_router
 from app.db import close_pool
@@ -48,6 +49,7 @@ app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(alerts_router)
 app.include_router(briefings_router)
+app.include_router(learning_router)
 app.include_router(documents_router)
 app.include_router(metrics_router)
 
