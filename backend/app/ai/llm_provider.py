@@ -24,6 +24,7 @@ from app.ai.provider import (
     Vector,
     _json_value,
 )
+from app.ai.usage import record_ai_usage
 from app.config import DEFAULT_VERTEX_LOCATION, Settings
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,8 @@ class _AsyncModels(Protocol):
         contents: str,
         config: object,
     ) -> _EmbedResponse: ...
+
+    async def get(self, *, model: str) -> object: ...
 
 
 class _AsyncClient(Protocol):
@@ -374,7 +377,7 @@ class LLMProvider:
                 "estimated_cost_usd": round(estimated_cost, 8),
             },
         )
-        return ProviderResult(
+        result = ProviderResult(
             data=serialised,
             raw=raw,
             provider=self.provider_name,
@@ -382,7 +385,18 @@ class LLMProvider:
             latency_ms=latency_ms,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            cost_usd=round(estimated_cost, 8),
         )
+        record_ai_usage(
+            provider=result.provider,
+            provider_ref=result.provider_ref,
+            operation=f"complete:{prompt_name}",
+            latency_ms=result.latency_ms,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+        )
+        return result
 
     async def embed(self, texts: list[str]) -> list[Vector]:
         vectors: list[Vector] = []
@@ -436,5 +450,22 @@ class LLMProvider:
                     ),
                 },
             )
+            record_ai_usage(
+                provider=self.provider_name,
+                provider_ref=self.config.embedding_model,
+                operation="embed",
+                latency_ms=latency_ms,
+                tokens_in=tokens_in,
+                tokens_out=0,
+                cost_usd=_cost_usd(
+                    tokens_in,
+                    self.config.embedding_cost_per_million_usd,
+                ),
+            )
             vectors.append(vector)
         return vectors
+
+    async def health(self) -> bool:
+        """Probe model metadata on the same regional client used for completions."""
+        await self._client.aio.models.get(model=self.config.model)
+        return True

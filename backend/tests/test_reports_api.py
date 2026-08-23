@@ -361,6 +361,11 @@ def test_successful_submission_schedules_intake(
         return {"id": REPORT_ID, "status": "submitted"}
 
     monkeypatch.setattr(reports_api, "transition_report", fake_transition)
+    monkeypatch.setattr(
+        reports_api,
+        "current_request_id",
+        lambda: "request-submit",
+    )
     background_tasks = BackgroundTasks()
 
     asyncio.run(
@@ -374,7 +379,7 @@ def test_successful_submission_schedules_intake(
 
     assert len(background_tasks.tasks) == 1
     assert background_tasks.tasks[0].func is reports_api.run_intake
-    assert background_tasks.tasks[0].args == (REPORT_ID,)
+    assert background_tasks.tasks[0].args == (REPORT_ID, "request-submit")
 
 
 def test_answer_endpoint_schedules_intake_after_round_completion(
@@ -394,6 +399,11 @@ def test_answer_endpoint_schedules_intake_after_round_completion(
         return StoredAnswer()
 
     monkeypatch.setattr(reports_api, "answer_clarification", fake_answer)
+    monkeypatch.setattr(
+        reports_api,
+        "current_request_id",
+        lambda: "request-clarification",
+    )
     background_tasks = BackgroundTasks()
 
     result = asyncio.run(
@@ -410,7 +420,7 @@ def test_answer_endpoint_schedules_intake_after_round_completion(
     assert result["round_complete"] is True
     assert len(background_tasks.tasks) == 1
     assert background_tasks.tasks[0].func is reports_api.run_intake
-    assert background_tasks.tasks[0].args == (REPORT_ID,)
+    assert background_tasks.tasks[0].args == (REPORT_ID, "request-clarification")
 
 
 def test_every_state_machine_event_has_action_and_timeline_catalogue_keys() -> None:

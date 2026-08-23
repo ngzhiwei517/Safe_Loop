@@ -18,6 +18,7 @@ from uuid import UUID
 from pydantic import BaseModel, ValidationError
 
 from app.ai.prompts import render_prompt
+from app.ai.usage import record_ai_usage
 from app.config import get_settings
 
 if TYPE_CHECKING:
@@ -43,6 +44,7 @@ class ProviderResult:
     latency_ms: int
     tokens_in: int
     tokens_out: int
+    cost_usd: float
 
 
 class AIProvider(Protocol):
@@ -57,6 +59,8 @@ class AIProvider(Protocol):
     ) -> ProviderResult: ...
 
     async def embed(self, texts: list[str]) -> list[Vector]: ...
+
+    async def health(self) -> bool: ...
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -310,7 +314,7 @@ class StubProvider:
             sort_keys=True,
             separators=(",", ":"),
         )
-        return ProviderResult(
+        result = ProviderResult(
             data=data_value,
             raw=raw,
             provider=self.provider_name,
@@ -318,10 +322,37 @@ class StubProvider:
             latency_ms=int(seed[:4], 16) % 25,
             tokens_in=max(1, (len(rendered_prompt.encode("utf-8")) + 3) // 4),
             tokens_out=max(1, (len(raw.encode("utf-8")) + 3) // 4),
+            cost_usd=0.0,
         )
+        record_ai_usage(
+            provider=result.provider,
+            provider_ref=result.provider_ref,
+            operation=f"complete:{prompt_name}",
+            latency_ms=result.latency_ms,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+        )
+        return result
 
     async def embed(self, texts: list[str]) -> list[Vector]:
-        return [_feature_hash_embedding(text) for text in texts]
+        vectors = [_feature_hash_embedding(text) for text in texts]
+        if texts:
+            digest = sha256("\0".join(texts).encode()).hexdigest()
+            record_ai_usage(
+                provider=self.provider_name,
+                provider_ref=f"stub-embed-{digest[:24]}",
+                operation="embed",
+                latency_ms=0,
+                tokens_in=sum(max(1, (len(text.encode("utf-8")) + 3) // 4) for text in texts),
+                tokens_out=0,
+                cost_usd=0.0,
+            )
+        return vectors
+
+    async def health(self) -> bool:
+        """Keep deep health deterministic and network-free in every test."""
+        return True
 
 
 def _feature_hash_embedding(text: str) -> Vector:

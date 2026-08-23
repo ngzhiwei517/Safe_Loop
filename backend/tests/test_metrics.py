@@ -9,7 +9,9 @@ from typing import AsyncIterator
 from uuid import UUID
 
 import pytest
+from fastapi import HTTPException
 
+from app.api.metrics import operational_metrics
 from app.config import get_settings
 from app.domain.enums import ActorType, ReportStatus, Role
 from app.scheduler import OVERDUE_JOB_ID, build_scheduler
@@ -22,6 +24,23 @@ REPORTER_ID = UUID("00000000-0000-0000-0000-000000000001")
 BRIEFING_ID = UUID("10000000-0000-0000-0000-000000000001")
 QUESTION_ONE_ID = UUID("20000000-0000-0000-0000-000000000001")
 QUESTION_TWO_ID = UUID("20000000-0000-0000-0000-000000000002")
+
+
+def test_operational_metrics_are_restricted_to_operations_roles() -> None:
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            operational_metrics(
+                Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER)
+            )
+        )
+    assert error.value.status_code == 403
+
+    reviewer_result = asyncio.run(
+        operational_metrics(
+            Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER)
+        )
+    )
+    assert set(reviewer_result) == {"latency", "errors"}
 
 
 class FakeTransaction:

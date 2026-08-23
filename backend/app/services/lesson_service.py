@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import json
 import logging
 import re
+from time import perf_counter
 from typing import cast
 from uuid import UUID
 
@@ -18,9 +19,12 @@ from app.ai.lesson_graph import (
     lesson_graph,
 )
 from app.ai.provider import JsonScalar, JsonValue
+from app.ai.usage import capture_ai_usage
+from app.config import get_settings
 from app.db import connection
 from app.domain.enums import ReportStatus
 from app.rag.retrieve import retrieve_chunks
+from app.observability import bind_request_id, log_event, track_exception
 from app.services.report_service import Actor, transition_report
 
 logger = logging.getLogger(__name__)
@@ -347,14 +351,64 @@ async def _persist_lesson(
             return True
 
 
-async def run_lesson(report_id: UUID) -> bool:
+async def run_lesson(report_id: UUID, request_id: str | None = None) -> bool:
     """Run after closure and fail closed without advancing an incomplete lesson."""
-    try:
-        loaded = await _load_lesson(report_id)
-        if loaded is None:
-            return False
-        result = await _invoke_graph(loaded)
-        return await _persist_lesson(report_id, result)
-    except Exception:
-        logger.exception("lesson_graph_failed", extra={"report_id": str(report_id)})
-        return False
+    started = perf_counter()
+    provider_hint = get_settings().ai_provider.strip().lower() or "unconfigured"
+    with bind_request_id(request_id) as run_request_id:
+        with capture_ai_usage() as usage:
+            try:
+                loaded = await _load_lesson(report_id)
+                if loaded is None:
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        "ai_run_completed",
+                        report_id=str(report_id),
+                        graph="lesson",
+                        latency_ms=round((perf_counter() - started) * 1000, 3),
+                        validation_result="not_run",
+                        outcome="skipped",
+                        **usage.snapshot().as_log_fields(
+                            fallback_provider=provider_hint
+                        ),
+                    )
+                    return False
+                loaded = _LoadedLesson(
+                    cast(
+                        LessonState,
+                        {**loaded.state, "request_id": run_request_id},
+                    ),
+                    loaded.retrieval_query,
+                )
+                result = await _invoke_graph(loaded)
+                persisted = await _persist_lesson(report_id, result)
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "ai_run_completed",
+                    report_id=str(report_id),
+                    graph="lesson",
+                    latency_ms=round((perf_counter() - started) * 1000, 3),
+                    validation_result="valid" if persisted else "not_persisted",
+                    outcome="persisted" if persisted else "stale",
+                    **usage.snapshot().as_log_fields(
+                        fallback_provider=provider_hint
+                    ),
+                )
+                return persisted
+            except Exception as error:
+                track_exception(
+                    logger,
+                    "ai_run_failed",
+                    error,
+                    report_id=str(report_id),
+                    graph="lesson",
+                    latency_ms=round((perf_counter() - started) * 1000, 3),
+                    validation_result="failed",
+                    outcome="failed",
+                    **usage.snapshot().as_log_fields(
+                        fallback_provider=provider_hint
+                    ),
+                )
+                return False

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import logging
+from time import perf_counter
 from typing import Literal, cast
 from uuid import UUID
 
@@ -19,9 +20,12 @@ from app.ai.intake_graph import (
     RetrievedProcedure,
     intake_graph,
 )
+from app.ai.usage import capture_ai_usage
+from app.config import get_settings
 from app.db import connection
 from app.domain.enums import ActorType, ReportStatus, Role, ValidationStatus
 from app.rag.retrieve import retrieve_chunks
+from app.observability import bind_request_id, log_event, track_exception
 from app.services.draft_service import append_draft
 from app.services.report_service import Actor, transition_report
 
@@ -51,6 +55,12 @@ class ClarificationAnswer:
 class _LoadedIntake:
     status: ReportStatus
     state: IntakeState
+
+
+@dataclass(frozen=True)
+class _PersistedIntake:
+    persisted: bool
+    validation_result: str
 
 
 def _locale(value: object) -> Locale:
@@ -182,7 +192,7 @@ async def _persist_result(
     report_id: UUID,
     loaded: _LoadedIntake,
     result: IntakeState,
-) -> bool:
+) -> _PersistedIntake:
     _validate_questions(loaded.state, result)
     async with connection() as conn:
         async with conn.transaction():
@@ -196,7 +206,7 @@ async def _persist_result(
                 report_id,
             )
             if report is None or ReportStatus(report["status"]) is not loaded.status:
-                return False
+                return _PersistedIntake(False, "not_persisted")
             has_pending = await conn.fetchval(
                 """
                 select exists (
@@ -207,7 +217,7 @@ async def _persist_result(
                 report_id,
             )
             if has_pending:
-                return False
+                return _PersistedIntake(False, "not_persisted")
 
             questions = result["questions"]
             await conn.execute(
@@ -248,7 +258,7 @@ async def _persist_result(
                         Actor.ai(),
                         transaction_connection=conn,
                     )
-                return True
+                return _PersistedIntake(True, "not_applicable")
 
             draft_envelope = result["draft"]
             if draft_envelope is None:
@@ -271,20 +281,70 @@ async def _persist_result(
                     Actor.system(),
                     transaction_connection=conn,
                 )
-            return True
+            return _PersistedIntake(True, str(stored_draft["validation"]))
 
 
-async def run_intake(report_id: UUID) -> bool:
+async def run_intake(report_id: UUID, request_id: str | None = None) -> bool:
     """Run one restartable graph pass and fail closed on every exception."""
-    try:
-        loaded = await _load_intake(report_id)
-        if loaded is None:
-            return False
-        result = await _invoke_graph(loaded.state)
-        return await _persist_result(report_id, loaded, result)
-    except Exception:
-        logger.exception("intake_graph_failed", extra={"report_id": str(report_id)})
-        return False
+    started = perf_counter()
+    provider_hint = get_settings().ai_provider.strip().lower() or "unconfigured"
+    with bind_request_id(request_id) as run_request_id:
+        with capture_ai_usage() as usage:
+            try:
+                loaded = await _load_intake(report_id)
+                if loaded is None:
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        "ai_run_completed",
+                        report_id=str(report_id),
+                        graph="intake",
+                        latency_ms=round((perf_counter() - started) * 1000, 3),
+                        validation_result="not_run",
+                        outcome="skipped",
+                        **usage.snapshot().as_log_fields(
+                            fallback_provider=provider_hint
+                        ),
+                    )
+                    return False
+                loaded = _LoadedIntake(
+                    loaded.status,
+                    cast(
+                        IntakeState,
+                        {**loaded.state, "request_id": run_request_id},
+                    ),
+                )
+                result = await _invoke_graph(loaded.state)
+                persisted = await _persist_result(report_id, loaded, result)
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "ai_run_completed",
+                    report_id=str(report_id),
+                    graph="intake",
+                    latency_ms=round((perf_counter() - started) * 1000, 3),
+                    validation_result=persisted.validation_result,
+                    outcome="persisted" if persisted.persisted else "stale",
+                    **usage.snapshot().as_log_fields(
+                        fallback_provider=provider_hint
+                    ),
+                )
+                return persisted.persisted
+            except Exception as error:
+                track_exception(
+                    logger,
+                    "ai_run_failed",
+                    error,
+                    report_id=str(report_id),
+                    graph="intake",
+                    latency_ms=round((perf_counter() - started) * 1000, 3),
+                    validation_result="failed",
+                    outcome="failed",
+                    **usage.snapshot().as_log_fields(
+                        fallback_provider=provider_hint
+                    ),
+                )
+                return False
 
 
 async def list_report_clarifications(report_id: UUID) -> list[asyncpg.Record]:

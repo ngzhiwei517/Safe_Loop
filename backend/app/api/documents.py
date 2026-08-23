@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from fastapi.encoders import jsonable_encoder
 
 from app.api.deps import current_actor
+from app.api.rate_limits import enforce_rate_limit
 from app.config import get_settings
 from app.services.document_service import (
     DocumentError,
@@ -59,6 +60,13 @@ async def post_document(
     actor: Actor = Depends(current_actor),
 ) -> dict[str, object]:
     """Receive one source and replace only its exact revision's chunks."""
+    if actor.profile_id is not None:
+        await enforce_rate_limit(
+            scope="document_upload",
+            subject=str(actor.profile_id),
+            limit=get_settings().document_upload_rate_limit_per_minute,
+            error_code="document_rate_limited",
+        )
     content = await file.read()
     try:
         document = await ingest_document(

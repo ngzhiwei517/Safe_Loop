@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Final, Literal, TypedDict, cast
+from typing import Final, Literal, NotRequired, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -82,6 +82,7 @@ class IntakeState(TypedDict):
     """Carry only plain data across durable, independently restartable graph runs."""
 
     report_id: str
+    request_id: NotRequired[str]
     lang_original: Literal["en", "zh-CN"]
     preferred_lang: Literal["en", "zh-CN"]
     description_original: str

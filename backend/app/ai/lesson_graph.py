@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Final, Literal, TypedDict, cast
+from typing import Final, Literal, NotRequired, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -89,6 +89,7 @@ class LessonState(TypedDict):
     """Carry one JSON-serialisable lesson run from verified facts to quiz."""
 
     report_id: str
+    request_id: NotRequired[str]
     verified_case: VerifiedCase
     retrieved_chunks: list[LessonProcedure]
     case_summary: list[CasePoint]

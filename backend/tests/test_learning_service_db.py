@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Coroutine, Iterator
 from datetime import datetime, timedelta, timezone
-import hashlib
 import json
 import os
 from typing import Any, TypeVar
@@ -22,6 +21,7 @@ from app.services.learning_service import (
     list_learning_briefings,
     submit_quiz_answer,
 )
+from app.services.rate_limit_service import subject_hash
 from app.services.report_service import Actor
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -254,8 +254,11 @@ def test_rate_limit_fires_at_configured_threshold(
         async def cleanup_limit() -> None:
             async with connection() as conn:
                 await conn.execute(
-                    "delete from quiz_rate_limits where ip_hash = $1",
-                    hashlib.sha256(client_ip.encode("utf-8")).hexdigest(),
+                    """
+                    delete from request_rate_limits
+                    where scope = 'quiz_submission' and subject_hash = $1
+                    """,
+                    subject_hash(client_ip),
                 )
 
         run(cleanup_limit())

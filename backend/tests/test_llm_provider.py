@@ -73,6 +73,7 @@ class FakeModels:
         self.embed_results = embed_results or []
         self.generate_calls: list[tuple[str, str, object]] = []
         self.embed_calls: list[tuple[str, str, object]] = []
+        self.get_calls: list[str] = []
 
     @staticmethod
     def _next[T](values: list[T], index: int) -> T:
@@ -107,6 +108,10 @@ class FakeModels:
         if isinstance(result, Exception):
             raise result
         return result
+
+    async def get(self, *, model: str) -> object:
+        self.get_calls.append(model)
+        return {"name": model}
 
 
 @dataclass
@@ -170,6 +175,7 @@ def test_structured_completion_is_revalidated_and_logs_tokens_and_cost(
     assert result.data == {"observation": "Loose guardrail", "confidence": 0.9}
     assert result.tokens_in == 120
     assert result.tokens_out == 35
+    assert result.cost_usd == pytest.approx(0.00019)
     assert result.provider == "vertex-gemini"
     assert result.provider_ref == "vertex-response-1"
     assert len(models.generate_calls) == 1
@@ -185,6 +191,14 @@ def test_structured_completion_is_revalidated_and_logs_tokens_and_cost(
     assert record.tokens_in == 120
     assert record.tokens_out == 35
     assert record.estimated_cost_usd == 0.00019
+
+
+def test_health_uses_model_metadata_on_the_configured_regional_client() -> None:
+    models = FakeModels()
+    provider = provider_with(models)
+
+    assert asyncio.run(provider.health()) is True
+    assert models.get_calls == ["gemini-test"]
 
 
 def test_real_provider_is_available_through_the_provider_seam() -> None:

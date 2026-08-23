@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.alerts import router as alerts_router
@@ -18,6 +19,13 @@ from app.config import get_settings
 from app.api.reports import router as reports_router
 from app.db import close_pool
 from app.domain.transitions import TRANSITIONS
+from app.health import run_deep_health
+from app.observability import (
+    ERROR_ID_HEADER,
+    REQUEST_ID_HEADER,
+    RequestObservabilityMiddleware,
+    configure_json_logging,
+)
 from app.scheduler import start_scheduler
 
 
@@ -33,6 +41,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await close_pool()
 
 
+settings = get_settings()
+configure_json_logging(settings.log_level)
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -43,7 +53,18 @@ app.add_middleware(
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Debug-Role", "X-Debug-User"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Debug-Role",
+        "X-Debug-User",
+        REQUEST_ID_HEADER,
+    ],
+    expose_headers=[REQUEST_ID_HEADER, ERROR_ID_HEADER, "Retry-After"],
+)
+app.add_middleware(
+    RequestObservabilityMiddleware,
+    slow_request_ms=settings.slow_request_ms,
 )
 app.include_router(reports_router)
 app.include_router(notifications_router)
@@ -58,6 +79,16 @@ app.include_router(metrics_router)
 async def health() -> dict[str, object]:
     """Report process health and the configured application environment."""
     return {"ok": True, "env": get_settings().app_env}
+
+
+@app.get("/health/deep")
+async def health_deep() -> JSONResponse:
+    """Check dependencies without exposing endpoint credentials or exception prose."""
+    result = await run_deep_health()
+    return JSONResponse(
+        status_code=200 if result["ok"] else 503,
+        content=result,
+    )
 
 
 @app.get("/state-machine")

@@ -12,6 +12,8 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from app.api.deps import current_actor
+from app.api.rate_limits import enforce_rate_limit
+from app.config import get_settings
 from app.domain.enums import (
     CaseRole,
     InputMode,
@@ -22,6 +24,7 @@ from app.domain.enums import (
     Urgency,
 )
 from app.domain.transitions import TransitionError, allowed_targets, find
+from app.observability import current_request_id
 from app.services.action_service import ActionError, submit_action
 from app.services.media_service import (
     MediaError,
@@ -404,6 +407,12 @@ async def post_report(payload: CreateReportRequest, actor: Actor = Depends(curre
     """Create a draft owned by the authenticated debug actor."""
     if actor.profile_id is None:
         raise HTTPException(403, {"code": "profile_required", "message": "human profile is required"})
+    await enforce_rate_limit(
+        scope="report_submission",
+        subject=str(actor.profile_id),
+        limit=get_settings().report_submission_rate_limit_per_minute,
+        error_code="report_rate_limited",
+    )
     report_id = await create_report(
         actor.profile_id,
         payload.description_original,
@@ -614,7 +623,7 @@ async def post_verification(
     except TransitionError as error:
         raise transition_error(error) from error
     if payload.passed and result.report["status"] == ReportStatus.VERIFIED_CLOSED.value:
-        background_tasks.add_task(run_lesson, report_id)
+        background_tasks.add_task(run_lesson, report_id, current_request_id())
     return cast(
         dict[str, object],
         jsonable_encoder(
@@ -713,7 +722,7 @@ async def post_transition(
     except TransitionError as error:
         raise transition_error(error) from error
     if payload.target is ReportStatus.SUBMITTED:
-        background_tasks.add_task(run_intake, report_id)
+        background_tasks.add_task(run_intake, report_id, current_request_id())
     return cast(dict[str, object], jsonable_encoder(dict(report)))
 
 
@@ -736,7 +745,7 @@ async def post_clarification_answer(
     except ClarificationError as error:
         raise clarification_error(error) from error
     if result.rerun:
-        background_tasks.add_task(run_intake, report_id)
+        background_tasks.add_task(run_intake, report_id, current_request_id())
     return cast(
         dict[str, object],
         jsonable_encoder(

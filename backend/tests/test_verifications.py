@@ -167,6 +167,11 @@ def test_passed_verification_schedules_one_lesson_run(
         )
 
     monkeypatch.setattr(reports_api, "verify_report", fake_verify)
+    monkeypatch.setattr(
+        reports_api,
+        "current_request_id",
+        lambda: "request-verification",
+    )
     actor = Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER)
     payload = VerifyRequest(
         passed=True,
@@ -188,7 +193,7 @@ def test_passed_verification_schedules_one_lesson_run(
     assert len(background_tasks.tasks) == 1
     task = background_tasks.tasks[0]
     assert task.func is reports_api.run_lesson
-    assert task.args == (REPORT_ID,)
+    assert task.args == (REPORT_ID, "request-verification")
 
 
 def test_verification_validation_maps_to_a_clean_422() -> None:

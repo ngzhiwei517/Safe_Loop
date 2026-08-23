@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-import hashlib
 import json
 from typing import cast
 from uuid import UUID
@@ -14,6 +12,7 @@ from asyncpg.pool import PoolConnectionProxy
 from app.config import get_settings
 from app.db import connection
 from app.domain.enums import ActorType
+from app.services.rate_limit_service import RateLimitExceeded, consume_rate_limit
 from app.services.report_service import Actor
 
 
@@ -109,29 +108,17 @@ async def get_public_briefing(token: str) -> dict[str, object]:
 
 
 async def _consume_rate_limit(client_ip: str) -> None:
-    ip_hash = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
-    window = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-    limit = get_settings().quiz_rate_limit_per_minute
-    async with connection() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                "delete from quiz_rate_limits where window_started_at < now() - interval '2 hours'"
-            )
-            count = await conn.fetchval(
-                """
-                insert into quiz_rate_limits (ip_hash, window_started_at, request_count)
-                values ($1, $2, 1)
-                on conflict (ip_hash, window_started_at) do update
-                  set request_count = quiz_rate_limits.request_count + 1
-                  where quiz_rate_limits.request_count < $3
-                returning request_count
-                """,
-                ip_hash,
-                window,
-                limit,
-            )
-    if count is None:
-        raise LearningError("quiz_rate_limited", "quiz request rate limit exceeded")
+    try:
+        await consume_rate_limit(
+            scope="quiz_submission",
+            subject=client_ip,
+            limit=get_settings().quiz_rate_limit_per_minute,
+        )
+    except RateLimitExceeded as error:
+        raise LearningError(
+            "quiz_rate_limited",
+            "quiz request rate limit exceeded",
+        ) from error
 
 
 async def submit_quiz_answer(

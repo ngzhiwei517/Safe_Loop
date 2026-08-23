@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     alert_escalate_minutes: int = 5
     overdue_notification_hour: int = Field(default=8, ge=0, le=23)
     quiz_rate_limit_per_minute: int = Field(default=30, ge=1, le=300)
+    report_submission_rate_limit_per_minute: int = Field(default=10, ge=1, le=300)
+    document_upload_rate_limit_per_minute: int = Field(default=5, ge=1, le=100)
+    deep_health_timeout_seconds: float = Field(default=5.0, gt=0.0, le=30.0)
+    slow_request_ms: int = Field(default=300, ge=1)
+    log_level: str = "INFO"
     frontend_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

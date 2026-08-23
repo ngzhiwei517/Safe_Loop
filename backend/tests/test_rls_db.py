@@ -55,6 +55,7 @@ RLS_TABLES: Final = (
     "alerts",
     "closure_receipts",
     "quiz_rate_limits",
+    "request_rate_limits",
 )
 
 EXPECTED_POLICIES: Final = {

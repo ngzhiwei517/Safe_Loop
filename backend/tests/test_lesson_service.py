@@ -48,7 +48,8 @@ def test_graph_failure_logs_and_never_persists_or_advances(
     async def fake_load(_: UUID) -> lesson_service._LoadedLesson:
         return loaded
 
-    async def fail_graph(_: lesson_service._LoadedLesson) -> LessonState:
+    async def fail_graph(loaded_state: lesson_service._LoadedLesson) -> LessonState:
+        assert loaded_state.state["request_id"] == "request-lesson-failed"
         raise RuntimeError("graph failed")
 
     async def must_not_persist(*_: object) -> bool:
@@ -61,11 +62,23 @@ def test_graph_failure_logs_and_never_persists_or_advances(
     monkeypatch.setattr(lesson_service, "_persist_lesson", must_not_persist)
 
     with caplog.at_level(logging.ERROR):
-        result = asyncio.run(lesson_service.run_lesson(REPORT_ID))
+        result = asyncio.run(
+            lesson_service.run_lesson(REPORT_ID, "request-lesson-failed")
+        )
 
     assert result is False
     assert persisted is False
-    assert "lesson_graph_failed" in caplog.text
+    failure = next(record for record in caplog.records if record.msg == "ai_run_failed")
+    assert failure.request_id == "request-lesson-failed"
+    assert failure.report_id == str(REPORT_ID)
+    assert failure.graph == "lesson"
+    assert failure.provider == "stub"
+    assert failure.latency_ms >= 0
+    assert failure.tokens_in == 0
+    assert failure.tokens_out == 0
+    assert failure.cost_usd == 0.0
+    assert failure.validation_result == "failed"
+    assert failure.error_id
 
 
 def test_known_profile_names_are_removed_before_graph_input() -> None:
