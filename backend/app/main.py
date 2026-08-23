@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.alerts import router as alerts_router
+from app.api.briefings import router as briefings_router
 from app.api.documents import router as documents_router
 from app.api.metrics import router as metrics_router
 from app.api.notifications import router as notifications_router
@@ -46,6 +47,7 @@ app.add_middleware(
 app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(alerts_router)
+app.include_router(briefings_router)
 app.include_router(documents_router)
 app.include_router(metrics_router)
 

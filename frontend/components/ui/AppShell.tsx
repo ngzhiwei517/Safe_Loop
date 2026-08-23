@@ -39,6 +39,7 @@ type AppShellProps = (IdentityHeader | TitleHeader) & {
   showUrgentAlerts?: boolean;
   alertsHref?: string;
   priorityBadgeLabel?: (count: number) => string;
+  wide?: boolean;
 };
 
 export function AppShell({
@@ -58,6 +59,7 @@ export function AppShell({
   showUrgentAlerts = false,
   alertsHref,
   priorityBadgeLabel,
+  wide = false,
 }: AppShellProps) {
   const t = useTranslations();
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
@@ -102,7 +104,7 @@ export function AppShell({
   }, [pollStatus, showUrgentAlerts]);
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-[430px] flex-col bg-bg">
+    <div className={`mx-auto flex min-h-screen flex-col bg-bg ${wide ? "max-w-[1180px]" : "max-w-[430px]"}`}>
       {urgentAlert && alertsHref && (
         <Link href={alertsHref} className="block" aria-label={t("alert.banner.open")}>
           <Banner

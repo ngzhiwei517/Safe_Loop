@@ -95,6 +95,13 @@ class ValidationStatus(StrEnum):
     INVALID = "invalid"
 
 
+class BriefingStatus(StrEnum):
+    """Publication lifecycle for an immutable lesson version."""
+
+    DRAFT = "draft"
+    PUBLISHED = "published"
+
+
 AI_FORBIDDEN_STATUSES = frozenset(
     {
         ReportStatus.UNDER_REVIEW,
