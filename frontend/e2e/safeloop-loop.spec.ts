@@ -155,9 +155,10 @@ test.describe.serial("SafeLoop end-to-end contract", () => {
         : "拉动时，下方护栏锚点仍会移动。";
 
       try {
-        await reporterPage.goto(`/${locale}/review`);
+        await reporterPage.goto(`/${locale}/alerts`);
+        await expect(reporterPage).toHaveURL(new RegExp(`/${locale}/not-authorised$`));
         await expect(
-          reporterPage.getByText(copy(locale, "review.queue.loadFailedTitle"), { exact: true }),
+          reporterPage.getByText(copy(locale, "app.notAuthorised.title"), { exact: true }),
         ).toBeVisible();
         await assertLocalisedSurface(reporterPage);
 
