@@ -382,7 +382,7 @@ test.describe.serial("SafeLoop end-to-end contract", () => {
           .fill(futureDateInput(30));
         const publishResponsePromise = reviewerPage.waitForResponse((response) =>
           response.request().method() === "POST"
-          && /\/briefings\/[0-9a-f-]+\/publish$/u.test(new URL(response.url()).pathname),
+          && /\/briefings\/manage\/[0-9a-f-]+\/publish$/u.test(new URL(response.url()).pathname),
         );
         await reviewerPage
           .getByRole("button", { name: copy(locale, "briefings.editor.publish") })
