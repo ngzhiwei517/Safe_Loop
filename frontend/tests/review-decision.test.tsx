@@ -72,6 +72,8 @@ const report: ReportDetail = {
   activity: "Material delivery",
   level_or_zone: "Level 6",
   grid_ref: "A4",
+  submitted_at: "2026-08-22T01:02:00Z",
+  closed_at: null,
   created_at: "2026-08-22T01:00:00Z",
   media: [
     {
@@ -116,6 +118,7 @@ const report: ReportDetail = {
   },
   current_action: null,
   verifications: [],
+  closure_receipt: null,
   available_transitions: [
     {
       event: "reject",

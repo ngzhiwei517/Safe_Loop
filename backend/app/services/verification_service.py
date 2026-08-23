@@ -9,6 +9,7 @@ import re
 from uuid import UUID
 
 import asyncpg
+from asyncpg.pool import PoolConnectionProxy
 
 from app.db import connection
 from app.domain.enums import ActionStatus, ActorType, ReportStatus, Role
@@ -105,6 +106,101 @@ def _verification_values(
     return clean_notes, clean_reason, new_due_at if not passed else None
 
 
+async def _create_closure_receipt(
+    conn: PoolConnectionProxy[asyncpg.Record],
+    *,
+    report: asyncpg.Record,
+    action: asyncpg.Record,
+    verification: asyncpg.Record,
+    reviewer_id: UUID,
+    verification_notes: str,
+) -> asyncpg.Record:
+    """Snapshot only facts present in the human-verified case."""
+    reviewer = await conn.fetchrow(
+        """
+        select coalesce(nullif(btrim(display_name), ''), role::text) as display_name
+        from profiles
+        where id = $1
+        """,
+        reviewer_id,
+    )
+    if reviewer is None:
+        raise RuntimeError("verified reviewer profile disappeared")
+
+    before_media = await conn.fetchrow(
+        """
+        select id
+        from report_media
+        where report_id = $1 and phase = 'original'::media_phase
+        order by created_at, id
+        limit 1
+        """,
+        report["id"],
+    )
+    after_media = await conn.fetchrow(
+        """
+        with latest_submission as (
+          select metadata
+          from audit_log
+          where report_id = $1 and event = 'submit_evidence'
+          order by created_at desc, id desc
+          limit 1
+        ), submitted_media as (
+          select media_ref.value as media_id, media_ref.ordinality
+          from latest_submission
+          cross join lateral jsonb_array_elements_text(
+            case
+              when jsonb_typeof(metadata -> 'media_ids') = 'array'
+                then metadata -> 'media_ids'
+              else '[]'::jsonb
+            end
+          ) with ordinality as media_ref(value, ordinality)
+        )
+        select media.id
+        from submitted_media
+        join report_media media on media.id::text = submitted_media.media_id
+        where media.report_id = $1
+          and media.corrective_action_id = $2
+          and media.phase = 'evidence'::media_phase
+        order by submitted_media.ordinality
+        limit 1
+        """,
+        report["id"],
+        action["id"],
+    )
+    before_media_id = before_media["id"] if before_media is not None else None
+    after_media_id = after_media["id"] if after_media is not None else None
+    if before_media_id is None or after_media_id is None:
+        before_media_id = None
+        after_media_id = None
+
+    receipt = await conn.fetchrow(
+        """
+        insert into closure_receipts (
+          report_id, verification_id, corrective_action_id,
+          reporter_id, reporter_locale, action_text, verification_notes,
+          verified_by_id, verified_by_name, before_media_id, after_media_id
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        returning *
+        """,
+        report["id"],
+        verification["id"],
+        action["id"],
+        report["reporter_id"],
+        report["reporter_locale"],
+        action["action_text"],
+        verification_notes,
+        reviewer_id,
+        reviewer["display_name"],
+        before_media_id,
+        after_media_id,
+    )
+    if receipt is None:
+        raise RuntimeError("database did not return closure receipt")
+    return receipt
+
+
 async def verify_report(
     report_id: UUID,
     actor: Actor,
@@ -129,7 +225,18 @@ async def verify_report(
     async with connection() as conn:
         async with conn.transaction():
             report = await conn.fetchrow(
-                "select id, reporter_id, status::text, closed_at from reports where id = $1 for update",
+                """
+                select
+                  report.id,
+                  report.reporter_id,
+                  report.status::text,
+                  report.closed_at,
+                  reporter.preferred_lang as reporter_locale
+                from reports report
+                join profiles reporter on reporter.id = report.reporter_id
+                where report.id = $1
+                for update of report
+                """,
                 report_id,
             )
             if report is None:
@@ -203,6 +310,14 @@ async def verify_report(
                 )
                 if updated_action is None:
                     raise RuntimeError("corrective action disappeared during verification")
+                receipt = await _create_closure_receipt(
+                    conn,
+                    report=report,
+                    action=action,
+                    verification=verification,
+                    reviewer_id=actor.profile_id,
+                    verification_notes=clean_notes,
+                )
                 await send_notification(
                     report["reporter_id"],
                     "report_closed",
@@ -211,6 +326,7 @@ async def verify_report(
                         "report_id": report_id,
                         "corrective_action_id": action["id"],
                         "verification_id": verification["id"],
+                        "receipt_id": receipt["id"],
                     },
                     transaction_connection=conn,
                 )

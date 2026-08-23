@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -23,7 +24,7 @@ import { Card } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { PhotoStrip } from "../ui/PhotoStrip";
 import { StatusChip } from "../ui/StatusChip";
-import { Timeline } from "../ui/Timeline";
+import { Timeline, type TimelineEvent } from "../ui/Timeline";
 
 const transitionErrorKeys: Record<string, string> = {
   reason_required: "error.reason_required",
@@ -40,6 +41,20 @@ function actorKey(entry: TimelineEntry): string {
     return `timeline.actor.${entry.actor_role}`;
   }
   return `timeline.actor.${entry.actor_type}`;
+}
+
+function receiptClause(value: string): string {
+  return value
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/[.!?;。！？；]+/gu, ",")
+    .replace(/,+/gu, ",")
+    .replace(/^,|,$/gu, "")
+    .trim();
+}
+
+function lastTimelineEvent(entries: TimelineEntry[], event: string): TimelineEntry | undefined {
+  return [...entries].reverse().find((entry) => entry.event === event);
 }
 
 export function ReportDetail({ id, requestedLocale }: { id: string; requestedLocale: string }) {
@@ -138,6 +153,76 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
     note: entry.reason ? t("timeline.reason", { reason: entry.reason }) : undefined,
     status: entry.target ?? undefined,
   }));
+  const receipt = report.closure_receipt;
+  const submittedEvent = timeline.find((entry) => entry.event === "submit");
+  const reviewedEvent = timeline.find((entry) =>
+    entry.event === "approve_action" || entry.event === "approve_after_escalation"
+  );
+  const closedEvent = lastTimelineEvent(timeline, "verify_and_close");
+  const passedVerification = receipt
+    ? report.verifications.find((verification) => verification.id === receipt.verification_id)
+    : undefined;
+  const closureTimelineEvents: TimelineEvent[] = receipt
+    ? [
+        {
+          id: "receipt-reported",
+          title: t("receipt.timeline.reported"),
+          detail: formatDateTime(
+            submittedEvent?.created_at ?? report.submitted_at ?? report.created_at,
+            locale,
+          ),
+        },
+        {
+          id: "receipt-reviewed",
+          title: report.current_action
+            ? t("receipt.timeline.reviewedAssigned", {
+                assignee: report.current_action.assignee_name,
+              })
+            : t("receipt.timeline.reviewed"),
+          detail: report.current_action
+            ? t("receipt.timeline.reviewedDetail", {
+                reviewedAt: formatDateTime(
+                  reviewedEvent?.created_at ?? receipt.created_at,
+                  locale,
+                ),
+                dueAt: formatDateTime(report.current_action.due_at, locale),
+              })
+            : formatDateTime(reviewedEvent?.created_at ?? receipt.created_at, locale),
+        },
+        ...report.verifications
+          .filter((verification) => !verification.passed)
+          .map((verification, index) => ({
+            id: `receipt-returned-${verification.id}`,
+            title: t("receipt.timeline.sentBack", { count: index + 1 }),
+            detail: t("receipt.timeline.sentBackDetail", {
+              time: formatDateTime(verification.created_at, locale),
+              reviewer: verification.reviewer_name,
+            }),
+            note: verification.reason ?? undefined,
+            state: "bad" as const,
+          })),
+        {
+          id: "receipt-verified",
+          title: t("receipt.timeline.fixedVerified"),
+          detail: formatDateTime(passedVerification?.created_at ?? receipt.created_at, locale),
+        },
+        {
+          id: "receipt-closed",
+          title: t("receipt.timeline.closed"),
+          detail: formatDateTime(
+            closedEvent?.created_at ?? report.closed_at ?? receipt.created_at,
+            locale,
+          ),
+        },
+      ]
+    : timelineEvents;
+  const beforePhoto = receipt?.before_media_id
+    ? report.media.find((media) => media.id === receipt.before_media_id)
+    : undefined;
+  const afterPhoto = receipt?.after_media_id
+    ? report.media.find((media) => media.id === receipt.after_media_id)
+    : undefined;
+  const hasReceiptPhotoPair = Boolean(beforePhoto && afterPhoto);
 
   return (
     <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 pb-10 text-ink">
@@ -199,8 +284,59 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
 
         <Card className="space-y-4">
           <h2 className="text-xl font-bold">{t("report.detail.timeline")}</h2>
-          {timelineEvents.length > 0 ? <Timeline events={timelineEvents} /> : <p className="text-base text-inkMuted">{t("timeline.empty")}</p>}
+          {closureTimelineEvents.length > 0 ? <Timeline events={closureTimelineEvents} /> : <p className="text-base text-inkMuted">{t("timeline.empty")}</p>}
         </Card>
+
+        {receipt && (
+          <section
+            className="rounded-card border border-success bg-successSurface p-4 shadow-safe"
+            aria-labelledby="closure-receipt-title"
+          >
+            <div className="mb-2.5 flex items-center gap-2 text-successStrong">
+              <CheckCircleIcon className="h-6 w-6 flex-none text-success" />
+              <h2 className="text-base font-bold" id="closure-receipt-title">
+                {t("receipt.title")}
+              </h2>
+            </div>
+            <p className="text-[15px] leading-6" data-testid="closure-receipt-summary">
+              {t("receipt.summary", {
+                action: receiptClause(receipt.action_text),
+                notes: receiptClause(receipt.verification_notes),
+                verifier: receipt.verified_by_name,
+              })}
+            </p>
+            {hasReceiptPhotoPair && beforePhoto && afterPhoto && (
+              <div className="mt-3.5 grid grid-cols-2 gap-3" data-testid="closure-receipt-photo-pair">
+                <figure>
+                  <figcaption className="mb-1.5 text-sm font-bold text-inkMuted">
+                    {t("receipt.before")}
+                  </figcaption>
+                  <Image
+                    className="aspect-[4/3] w-full rounded-tile object-cover"
+                    src={beforePhoto.signed_url}
+                    alt={t("receipt.beforeAlt")}
+                    width={160}
+                    height={120}
+                    unoptimized
+                  />
+                </figure>
+                <figure>
+                  <figcaption className="mb-1.5 text-sm font-bold text-inkMuted">
+                    {t("receipt.after")}
+                  </figcaption>
+                  <Image
+                    className="aspect-[4/3] w-full rounded-tile object-cover"
+                    src={afterPhoto.signed_url}
+                    alt={t("receipt.afterAlt")}
+                    width={160}
+                    height={120}
+                    unoptimized
+                  />
+                </figure>
+              </div>
+            )}
+          </section>
+        )}
 
         {actionErrorKey && <Banner tone="warning" title={t("report.detail.actionFailedTitle")} detail={t(actionErrorKey)} />}
 
@@ -233,7 +369,7 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
               </div>
             ))}
           </Card>
-        ) : (
+        ) : receipt ? null : (
           <Banner
             tone="info"
             title={t("report.detail.waitingTitle")}

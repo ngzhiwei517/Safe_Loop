@@ -465,6 +465,11 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
         result["verifications"] = json.loads(verifications)
     elif verifications is None:
         result["verifications"] = []
+    closure_receipt = result.get("closure_receipt")
+    if isinstance(closure_receipt, str):
+        result["closure_receipt"] = json.loads(closure_receipt)
+    elif closure_receipt is None:
+        result["closure_receipt"] = None
     result["media"] = media
     result["clarifications"] = [dict(row) for row in clarifications]
     available: list[dict[str, object]] = []

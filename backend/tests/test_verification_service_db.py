@@ -17,7 +17,14 @@ from app.domain.enums import ActorType, ReportStatus, ReviewDecision, Role
 from app.domain.transitions import TransitionError
 from app.services import verification_service as verification_service_module
 from app.services.action_service import submit_action
-from app.services.report_service import Actor, create_report, get_timeline, transition_report
+from app.services.media_service import assert_report_readable
+from app.services.report_service import (
+    Actor,
+    create_report,
+    get_report,
+    get_timeline,
+    transition_report,
+)
 from app.services.review_service import review_report
 from app.services.verification_service import VerificationError, verify_report
 
@@ -49,8 +56,17 @@ def run(coroutine: Coroutine[Any, Any, T]) -> T:
     return _test_loop.run_until_complete(coroutine)
 
 
-async def make_submitted_action() -> tuple[UUID, UUID, UUID, datetime]:
-    report_id = await create_report(REPORTER_ID, f"verification fixture {uuid4()}")
+async def make_submitted_action(
+    *,
+    is_confidential: bool = False,
+    include_original_photo: bool = False,
+    include_evidence_photo: bool = False,
+) -> tuple[UUID, UUID, UUID, datetime]:
+    report_id = await create_report(
+        REPORTER_ID,
+        f"verification fixture {uuid4()}",
+        is_confidential=is_confidential,
+    )
     reporter = Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER)
     reviewer = Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER)
     await transition_report(report_id, ReportStatus.SUBMITTED, reporter)
@@ -69,12 +85,40 @@ async def make_submitted_action() -> tuple[UUID, UUID, UUID, datetime]:
     )
     assert reviewed.corrective_action_id is not None
     assert reviewed.assignment_id is not None
+    evidence_media_ids: list[UUID] = []
+    if include_original_photo or include_evidence_photo:
+        async with connection() as conn:
+            if include_original_photo:
+                await conn.execute(
+                    """
+                    insert into report_media (
+                      report_id, storage_path, mime_type, phase, caption
+                    )
+                    values ($1, $2, 'image/jpeg', 'original', 'Original condition')
+                    """,
+                    report_id,
+                    f"{REPORTER_ID}/{report_id}/original.jpg",
+                )
+            if include_evidence_photo:
+                evidence_media_id = await conn.fetchval(
+                    """
+                    insert into report_media (
+                      report_id, storage_path, mime_type, phase, caption
+                    )
+                    values ($1, $2, 'image/jpeg', 'evidence', 'Completed work')
+                    returning id
+                    """,
+                    report_id,
+                    f"{RESPONSIBLE_ID}/{report_id}/evidence.jpg",
+                )
+                assert isinstance(evidence_media_id, UUID)
+                evidence_media_ids.append(evidence_media_id)
     await submit_action(
         report_id,
         reviewed.corrective_action_id,
         Actor(ActorType.HUMAN, RESPONSIBLE_ID, Role.RESPONSIBLE),
         completed_note="Tightened the upper and lower anchors.",
-        media_ids=[],
+        media_ids=evidence_media_ids,
     )
     return report_id, reviewed.corrective_action_id, reviewed.assignment_id, due_at
 
@@ -112,6 +156,39 @@ async def read_cycle_state(report_id: UUID, action_id: UUID) -> asyncpg.Record:
             """,
             report_id,
             action_id,
+        )
+        assert row is not None
+        return row
+
+
+async def read_closure_delivery(report_id: UUID) -> asyncpg.Record:
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            select
+              receipt.*,
+              report.is_confidential,
+              (
+                select count(*)
+                from notifications notification
+                where notification.entity_type = 'report'
+                  and notification.entity_id = receipt.report_id
+                  and notification.kind = 'report_closed'
+              ) as notification_count,
+              (
+                select notification.recipient_id
+                from notifications notification
+                where notification.entity_type = 'report'
+                  and notification.entity_id = receipt.report_id
+                  and notification.kind = 'report_closed'
+                order by notification.created_at, notification.id
+                limit 1
+              ) as notification_recipient
+            from closure_receipts receipt
+            join reports report on report.id = receipt.report_id
+            where receipt.report_id = $1
+            """,
+            report_id,
         )
         assert row is not None
         return row
@@ -191,6 +268,58 @@ def test_transition_failure_rolls_back_the_verification_and_rework(
             )
         after = run(read_cycle_state(report_id, action_id))
         assert tuple(after) == tuple(before)
+    finally:
+        run(cleanup(report_id))
+
+
+def test_transition_failure_rolls_back_receipt_and_closure_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report_id, action_id, _, _ = run(make_submitted_action())
+
+    async def fail_transition(*_: object, **__: object) -> None:
+        raise TransitionError("illegal_transition", "forced transition failure")
+
+    async def read_delivery_counts() -> tuple[int, int]:
+        async with connection() as conn:
+            row = await conn.fetchrow(
+                """
+                select
+                  (select count(*) from closure_receipts where report_id = $1)::integer
+                    as receipt_count,
+                  (
+                    select count(*)
+                    from notifications
+                    where entity_type = 'report'
+                      and entity_id = $1
+                      and kind = 'report_closed'
+                  )::integer as notification_count
+                """,
+                report_id,
+            )
+            assert row is not None
+            return row["receipt_count"], row["notification_count"]
+
+    monkeypatch.setattr(
+        verification_service_module,
+        "transition_report",
+        fail_transition,
+    )
+    try:
+        before = run(read_cycle_state(report_id, action_id))
+        with pytest.raises(TransitionError):
+            run(
+                verify_report(
+                    report_id,
+                    Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+                    passed=True,
+                    checklist={"hazard_removed": True},
+                    notes="Both anchors held during the final pull test.",
+                )
+            )
+        after = run(read_cycle_state(report_id, action_id))
+        assert tuple(after) == tuple(before)
+        assert run(read_delivery_counts()) == (0, 0)
     finally:
         run(cleanup(report_id))
 
@@ -291,6 +420,84 @@ def test_two_failures_then_pass_preserves_three_cycles_and_closes_once() -> None
             run(overwrite_closed_at())
         assert database_error.value.sqlstate == "42501"
         assert run(read_cycle_state(report_id, action_id))["closed_at"] == closed_at
+    finally:
+        run(cleanup(report_id))
+
+
+def test_closure_delivers_exactly_one_receipt_to_confidential_reporter() -> None:
+    report_id, _, _, _ = run(make_submitted_action(is_confidential=True))
+    try:
+        run(
+            verify_report(
+                report_id,
+                Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+                passed=True,
+                checklist={"hazard_removed": True},
+                notes="Both anchors held during the final pull test.",
+            )
+        )
+
+        delivery = run(read_closure_delivery(report_id))
+        assert delivery["is_confidential"] is True
+        assert delivery["reporter_id"] == REPORTER_ID
+        assert delivery["reporter_locale"] == "en"
+        assert delivery["verified_by_id"] == REVIEWER_ID
+        assert delivery["notification_count"] == 1
+        assert delivery["notification_recipient"] == REPORTER_ID
+
+        report = run(get_report(report_id))
+        assert report is not None
+        assert_report_readable(
+            report,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+        )
+    finally:
+        run(cleanup(report_id))
+
+
+def test_receipt_omits_pair_when_final_submission_has_no_evidence_photo() -> None:
+    report_id, _, _, _ = run(
+        make_submitted_action(include_original_photo=True)
+    )
+    try:
+        run(
+            verify_report(
+                report_id,
+                Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+                passed=True,
+                checklist={"hazard_removed": True},
+                notes="The repaired anchors passed inspection.",
+            )
+        )
+
+        delivery = run(read_closure_delivery(report_id))
+        assert delivery["before_media_id"] is None
+        assert delivery["after_media_id"] is None
+    finally:
+        run(cleanup(report_id))
+
+
+def test_receipt_snapshots_original_and_final_evidence_photo_pair() -> None:
+    report_id, _, _, _ = run(
+        make_submitted_action(
+            include_original_photo=True,
+            include_evidence_photo=True,
+        )
+    )
+    try:
+        run(
+            verify_report(
+                report_id,
+                Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+                passed=True,
+                checklist={"hazard_removed": True},
+                notes="The repaired anchors passed inspection.",
+            )
+        )
+
+        delivery = run(read_closure_delivery(report_id))
+        assert isinstance(delivery["before_media_id"], UUID)
+        assert isinstance(delivery["after_media_id"], UUID)
     finally:
         run(cleanup(report_id))
 

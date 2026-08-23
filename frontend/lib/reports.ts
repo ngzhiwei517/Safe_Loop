@@ -117,6 +117,20 @@ export type VerificationRecord = {
   created_at: string;
 };
 
+export type ClosureReceipt = {
+  id: string;
+  verification_id: string;
+  corrective_action_id: string;
+  reporter_locale: Locale;
+  action_text: string;
+  verification_notes: string;
+  verified_by_id: string;
+  verified_by_name: string;
+  before_media_id: string | null;
+  after_media_id: string | null;
+  created_at: string;
+};
+
 export type VerificationInput = {
   passed: boolean;
   checklist: Record<string, boolean> | null;
@@ -149,11 +163,14 @@ export type ReportDetail = {
   activity: string | null;
   level_or_zone: string | null;
   grid_ref: string | null;
+  submitted_at: string | null;
+  closed_at: string | null;
   created_at: string;
   media: ReportMedia[];
   latest_draft: AiDraft | null;
   current_action: CorrectiveActionDetail | null;
   verifications: VerificationRecord[];
+  closure_receipt: ClosureReceipt | null;
   available_transitions: AvailableTransition[];
 };
 

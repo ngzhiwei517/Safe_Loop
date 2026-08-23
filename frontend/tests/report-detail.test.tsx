@@ -60,6 +60,8 @@ function reportWith(
     activity: "Material delivery",
     level_or_zone: "Level 6",
     grid_ref: "A4",
+    submitted_at: "2026-08-22T01:02:00Z",
+    closed_at: null,
     created_at: "2026-08-22T01:00:00Z",
     media: [
       {
@@ -75,6 +77,7 @@ function reportWith(
     latest_draft: null,
     current_action: null,
     verifications: [],
+    closure_receipt: null,
     available_transitions: availableTransitions,
   };
 }
@@ -91,6 +94,89 @@ const timeline = [
     created_at: "2026-08-22T01:02:00Z",
   },
 ];
+
+const closureTimeline = [
+  timeline[0],
+  {
+    id: "review-audit-id",
+    event: "approve_action",
+    actor_type: "human" as const,
+    actor_role: "reviewer" as const,
+    source: reportStatus.under_review,
+    target: reportStatus.action_assigned,
+    reason: null,
+    created_at: "2026-08-22T03:00:00Z",
+  },
+  {
+    id: "close-audit-id",
+    event: "verify_and_close",
+    actor_type: "human" as const,
+    actor_role: "reviewer" as const,
+    source: reportStatus.action_submitted,
+    target: reportStatus.verified_closed,
+    reason: null,
+    created_at: "2026-08-23T08:22:00Z",
+  },
+];
+
+function closedReport(withPhotoPair = true): ReportDetailData {
+  const report = reportWith([]);
+  report.status = reportStatus.verified_closed;
+  report.closed_at = "2026-08-23T08:22:00Z";
+  report.current_action = {
+    id: "action-id",
+    assignment_id: "assignment-id",
+    assignee_id: "responsible-id",
+    assignee_name: "Ah Hock",
+    assignment_active: true,
+    action_text: "Installed and pull-tested both guardrail anchors.",
+    status: "verified",
+    rework_count: 0,
+    due_at: "2026-08-24T09:00:00Z",
+    completed_note: "Both anchors were replaced.",
+    submitted_at: "2026-08-23T08:00:00Z",
+  };
+  report.verifications = [
+    {
+      id: "verification-id",
+      corrective_action_id: "action-id",
+      reviewer_id: "reviewer-id",
+      reviewer_name: "SO Lim Wei Sheng",
+      passed: true,
+      checklist: { hazard_removed: true },
+      notes: "Both anchors held during the final pull test.",
+      reason: null,
+      new_due_at: null,
+      created_at: "2026-08-23T08:20:00Z",
+    },
+  ];
+  if (withPhotoPair) {
+    report.media.push({
+      id: "after-media-id",
+      storage_path: "private/evidence.jpg",
+      mime_type: "image/jpeg",
+      phase: mediaPhase.evidence,
+      caption: null,
+      corrective_action_id: "action-id",
+      signed_url: "https://project.example/evidence.jpg?token=signed",
+      signed_url_expires_at: "2026-08-23T08:32:00Z",
+    });
+  }
+  report.closure_receipt = {
+    id: "receipt-id",
+    verification_id: "verification-id",
+    corrective_action_id: "action-id",
+    reporter_locale: locales[1],
+    action_text: "Installed and pull-tested both guardrail anchors.",
+    verification_notes: "Both anchors held during the final pull test.",
+    verified_by_id: "reviewer-id",
+    verified_by_name: "SO Lim Wei Sheng",
+    before_media_id: withPhotoPair ? "media-id" : null,
+    after_media_id: withPhotoPair ? "after-media-id" : null,
+    created_at: "2026-08-23T08:22:00Z",
+  };
+  return report;
+}
 
 function renderDetail(locale = defaultLocale) {
   const messages = locale === defaultLocale ? en : zh;
@@ -168,5 +254,39 @@ describe("ReportDetail", () => {
     expect(await screen.findByText(zh["timeline.event.submit"])).toBeTruthy();
     expect(screen.getByText(new RegExp(zh["timeline.actor.reporter"]))).toBeTruthy();
     expect(screen.getByText(zh["report.detail.originalText"])).toBeTruthy();
+  });
+
+  it.each([
+    [defaultLocale, en, "The team completed this work: Installed and pull-tested both guardrail anchors; Both anchors held during the final pull test; checked by SO Lim Wei Sheng."],
+    [locales[1], zh, "团队完成了这项工作：Installed and pull-tested both guardrail anchors；检查记录：Both anchors held during the final pull test；由SO Lim Wei Sheng检查确认。"],
+  ] as const)("renders the verified receipt and grouped timeline in %s", async (locale, messages, expectedSummary) => {
+    vi.mocked(getReport).mockResolvedValue(closedReport());
+    vi.mocked(getTimeline).mockResolvedValue(closureTimeline);
+    renderDetail(locale);
+
+    const receiptTitle = await screen.findByText(messages["receipt.title"]);
+    expect(screen.getByTestId("closure-receipt-summary").textContent).toBe(expectedSummary);
+    expect(screen.getByText(messages["receipt.timeline.reported"])).toBeTruthy();
+    expect(screen.getByText(messages["receipt.timeline.reviewedAssigned"].replace("{assignee}", "Ah Hock"))).toBeTruthy();
+    expect(screen.getByText(messages["receipt.timeline.fixedVerified"])).toBeTruthy();
+    expect(screen.getByText(messages["receipt.timeline.closed"])).toBeTruthy();
+    expect(screen.getByTestId("closure-receipt-photo-pair")).toBeTruthy();
+    expect(screen.getByRole("img", { name: messages["receipt.beforeAlt"] })).toBeTruthy();
+    expect(screen.getByRole("img", { name: messages["receipt.afterAlt"] })).toBeTruthy();
+    const timelineTitle = screen.getByText(messages["report.detail.timeline"]);
+    expect(timelineTitle.compareDocumentPosition(receiptTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId("closure-receipt-summary").textContent).not.toContain("verified_closed");
+  });
+
+  it("omits the whole image pair when closure has no evidence photo", async () => {
+    vi.mocked(getReport).mockResolvedValue(closedReport(false));
+    vi.mocked(getTimeline).mockResolvedValue(closureTimeline);
+    renderDetail();
+
+    expect(await screen.findByText(en["receipt.title"])).toBeTruthy();
+    expect(screen.queryByTestId("closure-receipt-photo-pair")).toBeNull();
+    expect(screen.queryByRole("img", { name: en["receipt.beforeAlt"] })).toBeNull();
+    expect(screen.queryByRole("img", { name: en["receipt.afterAlt"] })).toBeNull();
+    expect(screen.queryByText(en["report.detail.waiting.verified_closed"])).toBeNull();
   });
 });

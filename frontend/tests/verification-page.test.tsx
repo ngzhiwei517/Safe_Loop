@@ -59,6 +59,8 @@ const report: ReportDetail = {
   activity: "Formwork",
   level_or_zone: "Level 6",
   grid_ref: null,
+  submitted_at: "2026-08-20T00:02:00Z",
+  closed_at: null,
   created_at: "2026-08-20T00:00:00Z",
   media: [
     {
@@ -101,6 +103,7 @@ const report: ReportDetail = {
       created_at: "2026-08-22T01:00:00Z",
     },
   ],
+  closure_receipt: null,
   available_transitions: [
     {
       event: "verification_failed",

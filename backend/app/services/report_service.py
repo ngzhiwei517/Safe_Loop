@@ -436,7 +436,8 @@ async def get_report(report_id: UUID) -> asyncpg.Record | None:
               r.*,
               latest.latest_draft,
               current_action.current_action,
-              verification_history.verifications
+              verification_history.verifications,
+              closure.closure_receipt
             from reports r
             left join lateral (
               select jsonb_build_object(
@@ -514,6 +515,23 @@ async def get_report(report_id: UUID) -> asyncpg.Record | None:
               join profiles reviewer on reviewer.id = verification.reviewer_id
               where verification.report_id = r.id
             ) verification_history on true
+            left join lateral (
+              select jsonb_build_object(
+                'id', receipt.id,
+                'verification_id', receipt.verification_id,
+                'corrective_action_id', receipt.corrective_action_id,
+                'reporter_locale', receipt.reporter_locale,
+                'action_text', receipt.action_text,
+                'verification_notes', receipt.verification_notes,
+                'verified_by_id', receipt.verified_by_id,
+                'verified_by_name', receipt.verified_by_name,
+                'before_media_id', receipt.before_media_id,
+                'after_media_id', receipt.after_media_id,
+                'created_at', receipt.created_at
+              ) as closure_receipt
+              from closure_receipts receipt
+              where receipt.report_id = r.id
+            ) closure on true
             where r.id = $1
             """,
             report_id,

@@ -72,7 +72,9 @@ def test_available_transitions_differ_without_client_role_logic(
 
     assert reporter_result["available_transitions"] == []
     assert reporter_result["latest_draft"] is None
+    assert reporter_result["closure_receipt"] is None
     assert reviewer_result["latest_draft"] is None
+    assert reviewer_result["closure_receipt"] is None
     assert reviewer_result["available_transitions"] == [
         {
             "event": "reject",
@@ -138,6 +140,16 @@ def test_report_detail_decodes_latest_draft_and_validation_errors(
                     }
                 ]
             ),
+            "closure_receipt": json.dumps(
+                {
+                    "id": "70000000-0000-0000-0000-000000000001",
+                    "verification_id": "60000000-0000-0000-0000-000000000001",
+                    "action_text": "Secure the lower anchor.",
+                    "verification_notes": "The anchor held under load.",
+                    "before_media_id": None,
+                    "after_media_id": None,
+                }
+            ),
         }
 
     async def empty_rows(_: UUID) -> list[dict[str, object]]:
@@ -164,6 +176,9 @@ def test_report_detail_decodes_latest_draft_and_validation_errors(
     verifications = result["verifications"]
     assert isinstance(verifications, list)
     assert verifications[0]["reason"] == "The lower anchor still moves."
+    receipt = result["closure_receipt"]
+    assert isinstance(receipt, dict)
+    assert receipt["verification_notes"] == "The anchor held under load."
 
 
 def test_review_endpoint_passes_the_atomic_payload_to_the_service(
