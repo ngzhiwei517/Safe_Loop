@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     documents_bucket: str = "documents"
     documents_max_bytes: int = 25 * 1024 * 1024
     alert_escalate_minutes: int = 5
+    overdue_notification_hour: int = Field(default=8, ge=0, le=23)
     frontend_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

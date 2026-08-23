@@ -20,6 +20,7 @@ export type NotificationItem = {
   entity_id: string;
   payload: Record<string, string | number | null>;
   read_at: string | null;
+  delivery_date: string | null;
   created_at: string;
 };
 
@@ -27,6 +28,7 @@ export type NotificationFeed = {
   items: NotificationItem[];
   unread_count: number;
   priority_unread_count: number;
+  unresolved_sent_back_count: number;
 };
 
 export function listNotifications(

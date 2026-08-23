@@ -63,6 +63,8 @@ class ReportPage:
 
     rows: list[asyncpg.Record]
     next_cursor: str | None
+    overdue_count: int = 0
+    rework_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -240,6 +242,8 @@ async def list_reports(
           action.submitted_at as action_submitted_at,
           coalesce(action.rework_count, 0)::integer as rework_count,
           coalesce(action.rework_count, 0) >= 2 as rework_attention,
+          coalesce(action.rework_count, 0) >= 1
+            and action.action_status = 'assigned' as sent_back_unresolved,
           action.deficiency_reason,
           action.deficiency_notes,
           action.deficiency_created_at,
@@ -311,6 +315,29 @@ async def list_reports(
     """
     async with connection() as conn:
         rows = await conn.fetch(sql, *values)
+        queue_counts = None
+        if actor.role in {Role.REVIEWER, Role.ADMIN}:
+            queue_counts = await conn.fetchrow(
+                """
+                select
+                  count(*) filter (
+                    where action.status = 'assigned'::action_status
+                      and action.due_at < now()
+                      and assignment.active
+                      and report.status = 'action_assigned'::report_status
+                  )::integer as overdue_count,
+                  count(*) filter (
+                    where action.status <> 'verified'::action_status
+                      and action.rework_count >= 1
+                      and assignment.active
+                  )::integer as rework_count
+                from corrective_actions action
+                join report_assignments assignment
+                  on assignment.id = action.assignment_id
+                 and assignment.report_id = action.report_id
+                join reports report on report.id = action.report_id
+                """
+            )
 
     visible_rows = rows[:limit]
     next_cursor = None
@@ -319,7 +346,12 @@ async def list_reports(
         next_cursor = _encode_cursor(
             _ReportCursor(last["_urgency_rank"], last["created_at"], last["id"])
         )
-    return ReportPage(visible_rows, next_cursor)
+    return ReportPage(
+        visible_rows,
+        next_cursor,
+        int(queue_counts["overdue_count"]) if queue_counts is not None else 0,
+        int(queue_counts["rework_count"]) if queue_counts is not None else 0,
+    )
 
 
 async def create_report(

@@ -27,11 +27,16 @@ class FakeConnection:
         self.rows = rows
         self.query = ""
         self.arguments: tuple[object, ...] = ()
+        self.count_query = ""
 
     async def fetch(self, query: str, *arguments: object) -> list[dict[str, object]]:
         self.query = query
         self.arguments = arguments
         return self.rows
+
+    async def fetchrow(self, query: str, *arguments: object) -> dict[str, object]:
+        self.count_query = query
+        return {"overdue_count": 2, "rework_count": 3}
 
 
 def queue_row(index: int, urgency_rank: int = 4) -> dict[str, object]:
@@ -48,6 +53,7 @@ def queue_row(index: int, urgency_rank: int = 4) -> dict[str, object]:
         "thumbnail_storage_path": None,
         "thumbnail_caption": None,
         "rework_count": 0,
+        "sent_back_unresolved": False,
     }
 
 
@@ -80,6 +86,9 @@ def test_queue_uses_urgency_age_keyset_not_offset(
     assert "order by _urgency_rank desc, r.created_at, r.id" in fake.query.lower()
     assert "offset" not in fake.query.lower()
     assert "coalesce(action.rework_count, 0) >= 2 as rework_attention" in fake.query.lower()
+    assert "as overdue_count" in fake.count_query.lower()
+    assert first_page.overdue_count == 2
+    assert first_page.rework_count == 3
 
     second_fake = use_fake_connection(monkeypatch, [queue_row(2)])
     asyncio.run(
@@ -247,7 +256,7 @@ def test_report_list_endpoint_batch_signs_one_thumbnail_page(
     captured_paths: list[str] = []
 
     async def fake_list(*_: object, **__: object) -> ReportPage:
-        return ReportPage(rows, "next-page")  # type: ignore[arg-type]
+        return ReportPage(rows, "next-page", 4, 5)  # type: ignore[arg-type]
 
     async def fake_sign(paths: list[str]) -> tuple[dict[str, str], datetime]:
         captured_paths.extend(paths)
@@ -280,6 +289,7 @@ def test_report_list_endpoint_batch_signs_one_thumbnail_page(
     assert "thumbnail_storage_path" not in items[0]
     assert "_urgency_rank" not in items[0]
     assert result["next_cursor"] == "next-page"
+    assert result["counts"] == {"overdue": 4, "rework": 5}
 
 
 def test_responsible_queue_batch_signs_previous_action_evidence(

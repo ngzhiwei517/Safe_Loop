@@ -280,6 +280,7 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
       inboxIcon={<BellIcon className="h-6 w-6" />}
       unreadCount={0}
       pollStatus
+      priorityBadgeLabel={(count) => t("action.returned.badge", { count })}
       navItems={navItems}
       activeHref={`/${locale}/actions`}
       languageSwitch={languageSwitch}
@@ -422,11 +423,18 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
                       <p className="text-xs font-bold uppercase tracking-wide text-primaryStrong">
                         {action.human_ref}
                       </p>
-                      {overdue && (
-                        <span className="rounded-chip bg-danger px-2 py-1 text-xs font-bold text-ink-inverse">
-                          {t("action.overdue")}
-                        </span>
-                      )}
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {returned && (
+                          <span className="rounded-chip bg-warning px-2 py-1 text-xs font-bold text-ink">
+                            {t("action.returned.badgeShort")}
+                          </span>
+                        )}
+                        {overdue && (
+                          <span className="rounded-chip bg-danger px-2 py-1 text-xs font-bold text-ink-inverse">
+                            {t("action.overdue")}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <h2 className="text-lg font-bold text-ink">{action.action_text}</h2>
                     <p className="text-base text-inkMuted">{action.summary}</p>

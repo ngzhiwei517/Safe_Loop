@@ -26,7 +26,7 @@ vi.mock("../lib/documents", async (importOriginal) => {
     retireDocument: vi.fn(),
   };
 });
-vi.mock("../lib/notifications", () => ({ listNotifications: vi.fn(async () => ({ unread_count: 0, priority_unread_count: 0, items: [] })) }));
+vi.mock("../lib/notifications", () => ({ listNotifications: vi.fn(async () => ({ unread_count: 0, priority_unread_count: 0, unresolved_sent_back_count: 0, items: [] })) }));
 vi.mock("../lib/alerts", () => ({ listAlerts: vi.fn(async () => []) }));
 vi.mock("../lib/supabase/browser", () => ({
   createClient: () => ({

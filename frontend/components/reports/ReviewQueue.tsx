@@ -68,6 +68,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [items, setItems] = useState<ReportListItem[]>([]);
+  const [queueCounts, setQueueCounts] = useState({ overdue: 0, rework: 0 });
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -95,6 +96,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
         );
         setItems((current) => (append ? [...current, ...page.items] : page.items));
         setNextCursor(page.next_cursor);
+        setQueueCounts(page.counts);
       } catch {
         setLoadFailed(true);
       } finally {
@@ -166,6 +168,24 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
       languageSwitch={languageSwitch}
     >
       <section className="space-y-4 pb-6 pt-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Card className="space-y-1">
+            <p className="text-2xl font-bold text-danger">
+              {formatNumber(queueCounts.overdue, locale)}
+            </p>
+            <p className="text-sm font-bold text-inkMuted">
+              {t("review.queue.overdueCount")}
+            </p>
+          </Card>
+          <Card className="space-y-1">
+            <p className="text-2xl font-bold text-warning">
+              {formatNumber(queueCounts.rework, locale)}
+            </p>
+            <p className="text-sm font-bold text-inkMuted">
+              {t("review.queue.reworkCount")}
+            </p>
+          </Card>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm font-bold text-inkMuted">
             <span>{t("review.queue.statusFilter")}</span>

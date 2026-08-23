@@ -38,6 +38,7 @@ type AppShellProps = (IdentityHeader | TitleHeader) & {
   pollStatus?: boolean;
   showUrgentAlerts?: boolean;
   alertsHref?: string;
+  priorityBadgeLabel?: (count: number) => string;
 };
 
 export function AppShell({
@@ -56,10 +57,11 @@ export function AppShell({
   pollStatus = false,
   showUrgentAlerts = false,
   alertsHref,
+  priorityBadgeLabel,
 }: AppShellProps) {
   const t = useTranslations();
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
-  const [priorityUnreadCount, setPriorityUnreadCount] = useState(0);
+  const [unresolvedSentBackCount, setUnresolvedSentBackCount] = useState(0);
   const [urgentAlert, setUrgentAlert] = useState<AlertItem | null>(null);
 
   useEffect(() => {
@@ -75,7 +77,7 @@ export function AppShell({
         const feed = await listNotifications(session.access_token, 1);
         if (!active) return;
         setLiveUnreadCount(feed.unread_count);
-        setPriorityUnreadCount(feed.priority_unread_count);
+        setUnresolvedSentBackCount(feed.unresolved_sent_back_count);
         if (showUrgentAlerts) {
           const alerts = await listAlerts(session.access_token);
           if (!active) return;
@@ -132,8 +134,16 @@ export function AppShell({
         >
           {inboxIcon}
           {liveUnreadCount > 0 && (
-            <span className={`absolute -right-1 -top-1 min-w-5 rounded-chip bg-danger px-1 text-center text-xs font-bold text-ink-inverse ${priorityUnreadCount > 0 ? "ring-2 ring-warningTint" : ""}`}>
+            <span className="absolute -right-1 -top-1 min-w-5 rounded-chip bg-danger px-1 text-center text-xs font-bold text-ink-inverse">
               {liveUnreadCount}
+            </span>
+          )}
+          {unresolvedSentBackCount > 0 && (
+            <span
+              className="absolute -left-1 -top-1 min-w-5 rounded-chip bg-warning px-1 text-center text-xs font-bold text-ink ring-2 ring-warningTint"
+              aria-label={priorityBadgeLabel?.(unresolvedSentBackCount)}
+            >
+              {unresolvedSentBackCount}
             </span>
           )}
         </Link>

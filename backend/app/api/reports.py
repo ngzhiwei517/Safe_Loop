@@ -385,7 +385,16 @@ async def report_list(
         items.append(item)
     return cast(
         dict[str, object],
-        jsonable_encoder({"items": items, "next_cursor": page.next_cursor}),
+        jsonable_encoder(
+            {
+                "items": items,
+                "next_cursor": page.next_cursor,
+                "counts": {
+                    "overdue": page.overdue_count,
+                    "rework": page.rework_count,
+                },
+            }
+        ),
     )
 
 

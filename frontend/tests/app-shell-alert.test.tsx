@@ -41,6 +41,7 @@ describe("AppShell urgent alerts", () => {
       items: [],
       unread_count: 1,
       priority_unread_count: 0,
+      unresolved_sent_back_count: 0,
     });
     vi.mocked(listAlerts).mockResolvedValue([
       {

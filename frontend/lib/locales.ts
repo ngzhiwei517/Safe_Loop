@@ -21,6 +21,28 @@ export function formatDate(value: Date | string, locale: Locale): string {
 
 export function formatNumber(value: number, locale: Locale): string { return new Intl.NumberFormat(locale).format(value); }
 
+export function formatPercent(value: number, locale: Locale): string {
+  return new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+export function formatDurationSeconds(value: number, locale: Locale): string {
+  const [amount, unit]: [number, "second" | "minute" | "hour"] =
+    value < 60
+      ? [value, "second"]
+      : value < 3600
+        ? [value / 60, "minute"]
+        : [value / 3600, "hour"];
+  return new Intl.NumberFormat(locale, {
+    style: "unit",
+    unit,
+    unitDisplay: "short",
+    maximumFractionDigits: 1,
+  }).format(amount);
+}
+
 export function formatRelativeAge(
   value: Date | string,
   locale: Locale,

@@ -61,6 +61,7 @@ const queueItem: ReportListItem = {
   action_submitted_at: null,
   rework_count: 2,
   rework_attention: true,
+  sent_back_unresolved: false,
   deficiency_reason: null,
   deficiency_notes: null,
   deficiency_created_at: null,
@@ -80,7 +81,11 @@ function renderQueue(locale = defaultLocale) {
 describe("ReviewQueue", () => {
   beforeEach(() => {
     vi.mocked(listReports).mockReset();
-    vi.mocked(listReports).mockResolvedValue({ items: [queueItem], next_cursor: null });
+    vi.mocked(listReports).mockResolvedValue({
+      items: [queueItem],
+      next_cursor: null,
+      counts: { overdue: 2, rework: 3 },
+    });
   });
   afterEach(cleanup);
 
@@ -94,6 +99,8 @@ describe("ReviewQueue", () => {
     expect(screen.getAllByText(en["urgency.critical"])).toHaveLength(2);
     expect(screen.getAllByText(en["status.under_review"])).toHaveLength(2);
     expect(screen.getByText(en["review.queue.reworkAttention"].replace("{count}", "2"))).toBeTruthy();
+    expect(screen.getByText(en["review.queue.overdueCount"])).toBeTruthy();
+    expect(screen.getByText(en["review.queue.reworkCount"])).toBeTruthy();
     expect(
       screen
         .getByRole("link", { name: new RegExp(queueItem.summary) })
@@ -138,6 +145,7 @@ describe("ReviewQueue", () => {
     vi.mocked(listReports).mockResolvedValue({
       items: [{ ...queueItem, status: reportStatus.action_submitted }],
       next_cursor: null,
+      counts: { overdue: 2, rework: 3 },
     });
     renderQueue();
 
@@ -151,10 +159,15 @@ describe("ReviewQueue", () => {
 
   it("continues from the server cursor instead of using an offset", async () => {
     vi.mocked(listReports)
-      .mockResolvedValueOnce({ items: [queueItem], next_cursor: "opaque-next" })
+      .mockResolvedValueOnce({
+        items: [queueItem],
+        next_cursor: "opaque-next",
+        counts: { overdue: 2, rework: 3 },
+      })
       .mockResolvedValueOnce({
         items: [{ ...queueItem, id: "report-two", human_ref: "SL-2026-00002" }],
         next_cursor: null,
+        counts: { overdue: 2, rework: 3 },
       });
     renderQueue();
     const user = userEvent.setup();

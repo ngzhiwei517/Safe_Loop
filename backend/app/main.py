@@ -2,17 +2,36 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.alerts import router as alerts_router
 from app.api.documents import router as documents_router
+from app.api.metrics import router as metrics_router
 from app.api.notifications import router as notifications_router
 from app.config import get_settings
 from app.api.reports import router as reports_router
+from app.db import close_pool
 from app.domain.transitions import TRANSITIONS
+from app.scheduler import start_scheduler
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Own the scheduler and database pool for exactly one application process."""
+    scheduler = start_scheduler()
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
+        await close_pool()
+
+
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -28,6 +47,7 @@ app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(alerts_router)
 app.include_router(documents_router)
+app.include_router(metrics_router)
 
 
 @app.get("/health")

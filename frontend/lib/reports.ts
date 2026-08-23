@@ -193,6 +193,7 @@ export type ReportListItem = {
   action_submitted_at: string | null;
   rework_count: number;
   rework_attention: boolean;
+  sent_back_unresolved: boolean;
   deficiency_reason: string | null;
   deficiency_notes: string | null;
   deficiency_created_at: string | null;
@@ -209,6 +210,10 @@ export type ReportListItem = {
 export type ReportListPage = {
   items: ReportListItem[];
   next_cursor: string | null;
+  counts: {
+    overdue: number;
+    rework: number;
+  };
 };
 
 export type ReportListFilters = {

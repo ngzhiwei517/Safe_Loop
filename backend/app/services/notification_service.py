@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 import json
 from typing import Literal
 from uuid import UUID
@@ -78,17 +79,27 @@ async def send_notification(
     payload: dict[str, object],
     *,
     transaction_connection: PoolConnectionProxy[asyncpg.Record],
+    delivery_date: date | None = None,
 ) -> asyncpg.Record:
     """Insert through the causing event's connection so both changes commit together."""
     if kind not in NOTIFICATION_KINDS:
         raise NotificationError("notification_kind_invalid", "notification kind is invalid")
+    if (kind == "overdue") is not (delivery_date is not None):
+        raise NotificationError(
+            "notification_delivery_date_invalid",
+            "only overdue notifications require a delivery date",
+        )
     normalised = _normalise_payload(payload)
     row = await transaction_connection.fetchrow(
         """
         insert into notifications (
-          recipient_id, kind, entity_type, entity_id, payload
+          recipient_id, kind, entity_type, entity_id, payload, delivery_date
         )
-        values ($1, $2, $3, $4, $5::jsonb)
+        values ($1, $2, $3, $4, $5::jsonb, $6)
+        on conflict (
+          recipient_id, kind, entity_type, entity_id, delivery_date
+        ) where kind = 'overdue'
+        do nothing
         returning *
         """,
         recipient,
@@ -96,7 +107,24 @@ async def send_notification(
         entity.entity_type,
         entity.entity_id,
         json.dumps(normalised),
+        delivery_date,
     )
+    if row is None and kind == "overdue":
+        row = await transaction_connection.fetchrow(
+            """
+            select *
+            from notifications
+            where recipient_id = $1
+              and kind = 'overdue'
+              and entity_type = $2
+              and entity_id = $3
+              and delivery_date = $4
+            """,
+            recipient,
+            entity.entity_type,
+            entity.entity_id,
+            delivery_date,
+        )
     if row is None:
         raise RuntimeError("database did not return notification")
     return row
@@ -106,7 +134,7 @@ async def list_notifications(
     actor: Actor,
     *,
     limit: int = 50,
-) -> tuple[list[asyncpg.Record], int, int]:
+) -> tuple[list[asyncpg.Record], int, int, int]:
     """Return the actor's inbox without changing read state."""
     if actor.actor_type is not ActorType.HUMAN or actor.profile_id is None:
         raise NotificationError("notification_actor_forbidden", "human profile is required")
@@ -130,7 +158,20 @@ async def list_notifications(
               count(*) filter (where read_at is null)::integer as unread_count,
               count(*) filter (
                 where read_at is null and kind = 'sent_back'
-              )::integer as priority_unread_count
+              )::integer as priority_unread_count,
+              (
+                select count(*)::integer
+                from corrective_actions action
+                join report_assignments assignment
+                  on assignment.id = action.assignment_id
+                 and assignment.report_id = action.report_id
+                 and assignment.active
+                join reports report on report.id = action.report_id
+                where assignment.assignee_id = $1
+                  and action.status = 'assigned'::action_status
+                  and action.rework_count >= 1
+                  and report.status = 'action_assigned'::report_status
+              ) as unresolved_sent_back_count
             from notifications
             where recipient_id = $1
             """,
@@ -138,7 +179,12 @@ async def list_notifications(
         )
     if counts is None:
         raise RuntimeError("database did not return notification counts")
-    return rows, counts["unread_count"], counts["priority_unread_count"]
+    return (
+        rows,
+        counts["unread_count"],
+        counts["priority_unread_count"],
+        counts["unresolved_sent_back_count"],
+    )
 
 
 async def mark_notification_read(notification_id: UUID, actor: Actor) -> asyncpg.Record:

@@ -42,6 +42,7 @@ def notification_error(error: NotificationError) -> HTTPException:
         "notification_limit_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
         "notification_payload_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
         "notification_kind_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "notification_delivery_date_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -56,7 +57,12 @@ async def notification_list(
 ) -> dict[str, object]:
     """Return unread-first inbox rows without marking anything read."""
     try:
-        rows, unread_count, priority_unread_count = await list_notifications(
+        (
+            rows,
+            unread_count,
+            priority_unread_count,
+            unresolved_sent_back_count,
+        ) = await list_notifications(
             actor,
             limit=limit,
         )
@@ -69,6 +75,7 @@ async def notification_list(
                 "items": [notification_json(row) for row in rows],
                 "unread_count": unread_count,
                 "priority_unread_count": priority_unread_count,
+                "unresolved_sent_back_count": unresolved_sent_back_count,
             }
         ),
     )

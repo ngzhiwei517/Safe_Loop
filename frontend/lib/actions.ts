@@ -27,7 +27,7 @@ function isOpenAction(report: ReportListItem): report is OpenAction {
 }
 
 export function isReturnedAction(action: OpenAction): boolean {
-  return action.rework_count > 0;
+  return action.sent_back_unresolved;
 }
 
 export function sortOpenActions(actions: OpenAction[]): OpenAction[] {

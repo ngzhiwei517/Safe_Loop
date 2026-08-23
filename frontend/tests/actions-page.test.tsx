@@ -27,6 +27,7 @@ vi.mock("../lib/notifications", () => ({
   listNotifications: vi.fn(async () => ({
     unread_count: 0,
     priority_unread_count: 0,
+    unresolved_sent_back_count: 1,
     items: [],
   })),
 }));
@@ -78,6 +79,7 @@ const returnedAction: OpenAction = {
   action_submitted_at: "2026-08-22T00:00:00Z",
   rework_count: 1,
   rework_attention: false,
+  sent_back_unresolved: true,
   deficiency_reason: "The lower anchor still moves when pulled.",
   deficiency_notes: null,
   deficiency_created_at: "2026-08-22T01:00:00Z",
@@ -129,6 +131,10 @@ describe("ActionsPage", () => {
     ).toBeTruthy();
     expect(
       screen.getByRole("img", { name: en["action.previous.photoAlt"] }),
+    ).toBeTruthy();
+    expect(screen.getByText(en["action.returned.badgeShort"])).toBeTruthy();
+    expect(
+      await screen.findByLabelText("1 sent-back action still needs work"),
     ).toBeTruthy();
   });
 

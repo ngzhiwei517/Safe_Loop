@@ -210,13 +210,13 @@ def test_escalation_fires_at_threshold_once_and_notifies_wider_group() -> None:
 def test_notifications_stay_unread_until_explicitly_opened() -> None:
     report_id, alert = run(make_alert())
     try:
-        items, unread_before, _ = run(list_notifications(reviewer(), limit=100))
+        items, unread_before, _, _ = run(list_notifications(reviewer(), limit=100))
         notification = next(item for item in items if item["entity_id"] == alert["id"])
         assert notification["read_at"] is None
 
         marked = run(mark_notification_read(notification["id"], reviewer()))
         assert marked["read_at"] is not None
-        _, unread_after, _ = run(list_notifications(reviewer(), limit=100))
+        _, unread_after, _, _ = run(list_notifications(reviewer(), limit=100))
         assert unread_after == unread_before - 1
     finally:
         run(cleanup(report_id))

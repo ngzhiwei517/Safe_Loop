@@ -35,6 +35,7 @@ function action(id: string, due: string, reworkCount = 0): OpenAction {
     action_submitted_at: null,
     rework_count: reworkCount,
     rework_attention: reworkCount >= 2,
+    sent_back_unresolved: reworkCount > 0,
     deficiency_reason: reworkCount ? "Anchor is still loose." : null,
     deficiency_notes: null,
     deficiency_created_at: null,
@@ -57,6 +58,7 @@ describe("technician actions API", () => {
         action("00001", "2026-08-28T00:00:00Z"),
       ],
       next_cursor: null,
+      counts: { overdue: 0, rework: 0 },
     });
 
     const result = await listOpenActions("test-token");
@@ -82,10 +84,12 @@ describe("technician actions API", () => {
       .mockResolvedValueOnce({
         items: [action("00002", "2026-08-30T00:00:00Z")],
         next_cursor: "next-page",
+        counts: { overdue: 0, rework: 0 },
       })
       .mockResolvedValueOnce({
         items: [action("00001", "2026-08-28T00:00:00Z")],
         next_cursor: null,
+        counts: { overdue: 0, rework: 0 },
       });
 
     const result = await listOpenActions("test-token");
