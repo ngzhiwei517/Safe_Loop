@@ -84,6 +84,11 @@ async function reloadUntilText(
     .poll(
       async () => {
         await page.reload({ waitUntil: "domcontentloaded" });
+        await page
+          .getByText(value, { exact: true })
+          .first()
+          .waitFor({ state: "visible", timeout: 5_000 })
+          .catch(() => undefined);
         return page.locator("body").innerText();
       },
       { intervals: [500, 1_000, 2_000], timeout },
@@ -100,6 +105,11 @@ async function reloadUntilSelector(
     .poll(
       async () => {
         await page.reload({ waitUntil: "domcontentloaded" });
+        await page
+          .locator(selector)
+          .first()
+          .waitFor({ state: "attached", timeout: 5_000 })
+          .catch(() => undefined);
         return page.locator(selector).count();
       },
       { intervals: [500, 1_000, 2_000], timeout },
