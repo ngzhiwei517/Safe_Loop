@@ -360,7 +360,8 @@ async def get_signed_report_media(
     async with connection() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, storage_path, mime_type, phase::text, caption, created_at
+            SELECT id, storage_path, mime_type, phase::text, caption,
+                   corrective_action_id, created_at
             FROM report_media WHERE report_id = $1 ORDER BY created_at, id
             """,
             report_id,

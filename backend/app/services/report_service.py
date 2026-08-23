@@ -239,6 +239,7 @@ async def list_reports(
           action.completed_note,
           action.submitted_at as action_submitted_at,
           coalesce(action.rework_count, 0)::integer as rework_count,
+          coalesce(action.rework_count, 0) >= 2 as rework_attention,
           action.deficiency_reason,
           action.deficiency_notes,
           action.deficiency_created_at,
@@ -427,11 +428,15 @@ async def update_draft_report(
 
 
 async def get_report(report_id: UUID) -> asyncpg.Record | None:
-    """Read one report with only the latest immutable AI draft attached."""
+    """Read one report with its immutable draft and verification history attached."""
     async with connection() as conn:
         return await conn.fetchrow(
             """
-            select r.*, latest.latest_draft
+            select
+              r.*,
+              latest.latest_draft,
+              current_action.current_action,
+              verification_history.verifications
             from reports r
             left join lateral (
               select jsonb_build_object(
@@ -457,6 +462,58 @@ async def get_report(report_id: UUID) -> asyncpg.Record | None:
               order by d.version desc
               limit 1
             ) latest on true
+            left join lateral (
+              select jsonb_build_object(
+                'id', action.id,
+                'assignment_id', assignment.id,
+                'assignee_id', assignment.assignee_id,
+                'assignee_name', coalesce(
+                  nullif(btrim(assignee.display_name), ''),
+                  assignee.role::text
+                ),
+                'assignment_active', assignment.active,
+                'action_text', action.action_text,
+                'status', action.status::text,
+                'rework_count', action.rework_count,
+                'due_at', action.due_at,
+                'completed_note', action.completed_note,
+                'submitted_at', action.submitted_at
+              ) as current_action
+              from corrective_actions action
+              join report_assignments assignment
+                on assignment.id = action.assignment_id
+               and assignment.report_id = action.report_id
+              join profiles assignee on assignee.id = assignment.assignee_id
+              where action.report_id = r.id
+              order by action.created_at desc, action.id desc
+              limit 1
+            ) current_action on true
+            left join lateral (
+              select coalesce(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'id', verification.id,
+                    'corrective_action_id', verification.corrective_action_id,
+                    'reviewer_id', verification.reviewer_id,
+                    'reviewer_name', coalesce(
+                      nullif(btrim(reviewer.display_name), ''),
+                      reviewer.role::text
+                    ),
+                    'passed', verification.passed,
+                    'checklist', verification.checklist,
+                    'notes', verification.notes,
+                    'reason', verification.reason,
+                    'new_due_at', verification.new_due_at,
+                    'created_at', verification.created_at
+                  )
+                  order by verification.created_at, verification.id
+                ),
+                '[]'::jsonb
+              ) as verifications
+              from verifications verification
+              join profiles reviewer on reviewer.id = verification.reviewer_id
+              where verification.report_id = r.id
+            ) verification_history on true
             where r.id = $1
             """,
             report_id,

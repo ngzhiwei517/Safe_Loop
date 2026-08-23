@@ -79,6 +79,7 @@ def test_queue_uses_urgency_age_keyset_not_offset(
     assert first_page.next_cursor is not None
     assert "order by _urgency_rank desc, r.created_at, r.id" in fake.query.lower()
     assert "offset" not in fake.query.lower()
+    assert "coalesce(action.rework_count, 0) >= 2 as rework_attention" in fake.query.lower()
 
     second_fake = use_fake_connection(monkeypatch, [queue_row(2)])
     asyncio.run(

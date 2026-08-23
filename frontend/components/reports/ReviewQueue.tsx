@@ -246,7 +246,11 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
             {items.map((report) => (
               <Link
                 className="block rounded-card outline-none focus:ring-2 focus:ring-primaryStrong focus:ring-offset-2 focus:ring-offset-bg"
-                href={`/${locale}/review/${report.id}`}
+                href={
+                  report.status === reportStatus.action_submitted
+                    ? `/${locale}/verify/${report.id}`
+                    : `/${locale}/review/${report.id}`
+                }
                 key={report.id}
               >
                 <Card className={`flex gap-4 ${urgencyBorder[report.urgency]}`}>
@@ -281,8 +285,15 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <StatusChip status={report.status} label={t(`status.${report.status}`)} />
                       {report.rework_count > 0 && (
-                        <span className="text-sm font-bold text-danger">
-                          {t("review.queue.rework", { count: formatNumber(report.rework_count, locale) })}
+                        <span
+                          className={`text-sm font-bold ${report.rework_attention ? "rounded-chip bg-dangerTint px-2 py-1 text-dangerStrong" : "text-danger"}`}
+                        >
+                          {t(
+                            report.rework_attention
+                              ? "review.queue.reworkAttention"
+                              : "review.queue.rework",
+                            { count: formatNumber(report.rework_count, locale) },
+                          )}
                         </span>
                       )}
                     </div>

@@ -34,6 +34,7 @@ function action(id: string, due: string, reworkCount = 0): OpenAction {
     completed_note: null,
     action_submitted_at: null,
     rework_count: reworkCount,
+    rework_attention: reworkCount >= 2,
     deficiency_reason: reworkCount ? "Anchor is still loose." : null,
     deficiency_notes: null,
     deficiency_created_at: null,

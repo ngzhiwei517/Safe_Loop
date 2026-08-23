@@ -60,6 +60,7 @@ const queueItem: ReportListItem = {
   completed_note: null,
   action_submitted_at: null,
   rework_count: 2,
+  rework_attention: true,
   deficiency_reason: null,
   deficiency_notes: null,
   deficiency_created_at: null,
@@ -92,7 +93,7 @@ describe("ReviewQueue", () => {
     expect(screen.getByRole("img", { name: queueItem.thumbnail_caption! })).toBeTruthy();
     expect(screen.getAllByText(en["urgency.critical"])).toHaveLength(2);
     expect(screen.getAllByText(en["status.under_review"])).toHaveLength(2);
-    expect(screen.getByText("Rework 2")).toBeTruthy();
+    expect(screen.getByText(en["review.queue.reworkAttention"].replace("{count}", "2"))).toBeTruthy();
     expect(
       screen
         .getByRole("link", { name: new RegExp(queueItem.summary) })
@@ -130,6 +131,21 @@ describe("ReviewQueue", () => {
         },
         "test-token",
       ),
+    );
+  });
+
+  it("opens submitted corrective actions on the verification route", async () => {
+    vi.mocked(listReports).mockResolvedValue({
+      items: [{ ...queueItem, status: reportStatus.action_submitted }],
+      next_cursor: null,
+    });
+    renderQueue();
+
+    const link = await screen.findByRole("link", {
+      name: new RegExp(queueItem.summary),
+    });
+    expect(link.getAttribute("href")).toBe(
+      `/${defaultLocale}/verify/${queueItem.id}`,
     );
   });
 

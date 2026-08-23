@@ -26,6 +26,8 @@ export type ReportMedia = {
   mime_type: string;
   phase: MediaPhase;
   caption: string | null;
+  corrective_action_id?: string | null;
+  created_at?: string;
   signed_url: string;
   signed_url_expires_at: string;
 };
@@ -88,6 +90,53 @@ export type AiDraft = {
   created_at: string;
 };
 
+export type CorrectiveActionDetail = {
+  id: string;
+  assignment_id: string;
+  assignee_id: string;
+  assignee_name: string;
+  assignment_active: boolean;
+  action_text: string;
+  status: "assigned" | "submitted" | "verified";
+  rework_count: number;
+  due_at: string;
+  completed_note: string | null;
+  submitted_at: string | null;
+};
+
+export type VerificationRecord = {
+  id: string;
+  corrective_action_id: string;
+  reviewer_id: string;
+  reviewer_name: string;
+  passed: boolean;
+  checklist: Record<string, unknown> | unknown[] | null;
+  notes: string | null;
+  reason: string | null;
+  new_due_at: string | null;
+  created_at: string;
+};
+
+export type VerificationInput = {
+  passed: boolean;
+  checklist: Record<string, boolean> | null;
+  notes: string;
+  reason?: string;
+  new_due_at?: string;
+};
+
+export type VerificationResult = {
+  verification_id: string;
+  report_id: string;
+  status: ReportStatus;
+  closed_at: string | null;
+  corrective_action_id: string;
+  action_status: "assigned" | "verified";
+  rework_count: number;
+  assignment_id: string;
+  due_at: string;
+};
+
 export type ReportDetail = {
   id: string;
   human_ref: string;
@@ -103,6 +152,8 @@ export type ReportDetail = {
   created_at: string;
   media: ReportMedia[];
   latest_draft: AiDraft | null;
+  current_action: CorrectiveActionDetail | null;
+  verifications: VerificationRecord[];
   available_transitions: AvailableTransition[];
 };
 
@@ -124,6 +175,7 @@ export type ReportListItem = {
   completed_note: string | null;
   action_submitted_at: string | null;
   rework_count: number;
+  rework_attention: boolean;
   deficiency_reason: string | null;
   deficiency_notes: string | null;
   deficiency_created_at: string | null;
@@ -241,6 +293,17 @@ export function reviewReport(
   accessToken: string,
 ): Promise<ReviewResult> {
   return apiFetch<ReviewResult>(`/reports/${reportId}/review`, accessToken, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function verifyReport(
+  reportId: string,
+  input: VerificationInput,
+  accessToken: string,
+): Promise<VerificationResult> {
+  return apiFetch<VerificationResult>(`/reports/${reportId}/verify`, accessToken, {
     method: "POST",
     body: JSON.stringify(input),
   });

@@ -73,6 +73,8 @@ function reportWith(
       },
     ],
     latest_draft: null,
+    current_action: null,
+    verifications: [],
     available_transitions: availableTransitions,
   };
 }

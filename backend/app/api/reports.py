@@ -48,6 +48,10 @@ from app.services.report_service import (
     update_draft_report,
 )
 from app.services.review_service import ReviewError, review_report
+from app.services.verification_service import (
+    VerificationError,
+    verify_report,
+)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -110,6 +114,16 @@ class ActionSubmitRequest(BaseModel):
 
     completed_note: str | None = Field(default=None, max_length=4000)
     media_ids: list[UUID] = Field(default_factory=list, max_length=10)
+
+
+class VerifyRequest(BaseModel):
+    """Record one human inspection and any deadline for the next rework cycle."""
+
+    passed: bool
+    checklist: dict[str, object] | list[object] | None = None
+    notes: str = Field(default="", max_length=4000)
+    reason: str | None = Field(default=None, max_length=2000)
+    new_due_at: datetime | None = None
 
 
 class ClarificationAnswerRequest(BaseModel):
@@ -198,6 +212,26 @@ def action_error(error: ActionError) -> HTTPException:
         "action_not_submittable": status.HTTP_409_CONFLICT,
         "action_evidence_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
         "action_media_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    }
+    return HTTPException(
+        code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        {"code": error.code, "message": error.message},
+    )
+
+
+def verification_error(error: VerificationError) -> HTTPException:
+    """Map atomic-verification failures to localisable machine contracts."""
+    code_status = {
+        "verification_actor_forbidden": status.HTTP_403_FORBIDDEN,
+        "verification_not_found": status.HTTP_404_NOT_FOUND,
+        "verification_action_not_found": status.HTTP_404_NOT_FOUND,
+        "verification_not_ready": status.HTTP_409_CONFLICT,
+        "verification_assignment_changed": status.HTTP_409_CONFLICT,
+        "verification_notes_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "verification_reason_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "verification_reason_too_vague": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "verification_due_at_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "verification_due_at_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -421,6 +455,16 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
         result["latest_draft"] = json.loads(latest_draft)
     elif latest_draft is None:
         result["latest_draft"] = None
+    current_action = result.get("current_action")
+    if isinstance(current_action, str):
+        result["current_action"] = json.loads(current_action)
+    elif current_action is None:
+        result["current_action"] = None
+    verifications = result.get("verifications")
+    if isinstance(verifications, str):
+        result["verifications"] = json.loads(verifications)
+    elif verifications is None:
+        result["verifications"] = []
     result["media"] = media
     result["clarifications"] = [dict(row) for row in clarifications]
     available: list[dict[str, object]] = []
@@ -527,6 +571,45 @@ async def post_action_submission(
                 "completed_note": result.action["completed_note"],
                 "submitted_at": result.action["submitted_at"],
                 "media_ids": result.media_ids,
+            }
+        ),
+    )
+
+
+@router.post("/{report_id}/verify")
+async def post_verification(
+    report_id: UUID,
+    payload: VerifyRequest,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Commit append-only inspection evidence and its report transition together."""
+    try:
+        result = await verify_report(
+            report_id,
+            actor,
+            passed=payload.passed,
+            checklist=payload.checklist,
+            notes=payload.notes,
+            reason=payload.reason,
+            new_due_at=payload.new_due_at,
+        )
+    except VerificationError as error:
+        raise verification_error(error) from error
+    except TransitionError as error:
+        raise transition_error(error) from error
+    return cast(
+        dict[str, object],
+        jsonable_encoder(
+            {
+                "verification_id": result.verification["id"],
+                "report_id": result.report["id"],
+                "status": result.report["status"],
+                "closed_at": result.report["closed_at"],
+                "corrective_action_id": result.action["id"],
+                "action_status": result.action["status"],
+                "rework_count": result.action["rework_count"],
+                "assignment_id": result.assignment["id"],
+                "due_at": result.assignment["due_at"],
             }
         ),
     )

@@ -7,6 +7,7 @@ import {
   fileReport,
   listReports,
   reviewReport,
+  verifyReport,
   type NewReportInput,
   type ReviewInput,
 } from "../lib/reports";
@@ -140,6 +141,28 @@ describe("fileReport", () => {
       "/reports/report-id/review",
       "test-token",
       { method: "POST", body: JSON.stringify(review) },
+    );
+  });
+
+  it("sends verification evidence and the new deadline to the atomic endpoint", async () => {
+    const verification = {
+      passed: false,
+      checklist: { hazard_removed: false },
+      notes: "The lower anchor was pull-tested.",
+      reason: "The lower anchor still moves when pulled.",
+      new_due_at: "2026-08-30T09:00:00.000Z",
+    };
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      verification_id: "verification-id",
+      status: reportStatus.action_assigned,
+    });
+
+    await verifyReport("report-id", verification, "test-token");
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/reports/report-id/verify",
+      "test-token",
+      { method: "POST", body: JSON.stringify(verification) },
     );
   });
 });

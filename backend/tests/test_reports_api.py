@@ -122,6 +122,22 @@ def test_report_detail_decodes_latest_draft_and_validation_errors(
                     "validation_errors": ["confidence_below_threshold"],
                 }
             ),
+            "current_action": json.dumps(
+                {
+                    "id": "50000000-0000-0000-0000-000000000001",
+                    "rework_count": 2,
+                    "status": "submitted",
+                }
+            ),
+            "verifications": json.dumps(
+                [
+                    {
+                        "id": "60000000-0000-0000-0000-000000000001",
+                        "passed": False,
+                        "reason": "The lower anchor still moves.",
+                    }
+                ]
+            ),
         }
 
     async def empty_rows(_: UUID) -> list[dict[str, object]]:
@@ -142,6 +158,12 @@ def test_report_detail_decodes_latest_draft_and_validation_errors(
     assert isinstance(draft, dict)
     assert draft["version"] == 2
     assert draft["validation_errors"] == ["confidence_below_threshold"]
+    action = result["current_action"]
+    assert isinstance(action, dict)
+    assert action["rework_count"] == 2
+    verifications = result["verifications"]
+    assert isinstance(verifications, list)
+    assert verifications[0]["reason"] == "The lower anchor still moves."
 
 
 def test_review_endpoint_passes_the_atomic_payload_to_the_service(

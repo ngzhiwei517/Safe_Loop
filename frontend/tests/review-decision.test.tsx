@@ -114,6 +114,8 @@ const report: ReportDetail = {
     validation_errors: [],
     created_at: "2026-08-22T01:01:00Z",
   },
+  current_action: null,
+  verifications: [],
   available_transitions: [
     {
       event: "reject",

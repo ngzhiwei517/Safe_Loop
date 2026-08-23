@@ -77,6 +77,7 @@ const returnedAction: OpenAction = {
   completed_note: "Tightened the upper anchor.",
   action_submitted_at: "2026-08-22T00:00:00Z",
   rework_count: 1,
+  rework_attention: false,
   deficiency_reason: "The lower anchor still moves when pulled.",
   deficiency_notes: null,
   deficiency_created_at: "2026-08-22T01:00:00Z",
