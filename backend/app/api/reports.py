@@ -36,6 +36,7 @@ from app.services.intake_service import (
     list_report_clarifications,
     run_intake,
 )
+from app.services.lesson_service import run_lesson
 from app.services.report_service import (
     Actor,
     ReportDraftError,
@@ -594,6 +595,7 @@ async def post_action_submission(
 async def post_verification(
     report_id: UUID,
     payload: VerifyRequest,
+    background_tasks: BackgroundTasks,
     actor: Actor = Depends(current_actor),
 ) -> dict[str, object]:
     """Commit append-only inspection evidence and its report transition together."""
@@ -611,6 +613,8 @@ async def post_verification(
         raise verification_error(error) from error
     except TransitionError as error:
         raise transition_error(error) from error
+    if payload.passed and result.report["status"] == ReportStatus.VERIFIED_CLOSED.value:
+        background_tasks.add_task(run_lesson, report_id)
     return cast(
         dict[str, object],
         jsonable_encoder(

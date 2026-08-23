@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 import pytest
 
 from app.api import reports as reports_api
@@ -118,8 +118,16 @@ def test_verification_endpoint_passes_the_complete_payload(
         reason="The lower anchor still moves when pulled.",
         new_due_at=due_at,
     )
+    background_tasks = BackgroundTasks()
 
-    result = asyncio.run(reports_api.post_verification(REPORT_ID, payload, actor))
+    result = asyncio.run(
+        reports_api.post_verification(
+            REPORT_ID,
+            payload,
+            background_tasks,
+            actor,
+        )
+    )
 
     assert result["verification_id"] == str(VERIFICATION_ID)
     assert result["status"] == "action_assigned"
@@ -133,6 +141,54 @@ def test_verification_endpoint_passes_the_complete_payload(
         "reason": "The lower anchor still moves when pulled.",
         "new_due_at": due_at,
     }
+    assert background_tasks.tasks == []
+
+
+def test_passed_verification_schedules_one_lesson_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_verify(
+        report_id: UUID,
+        actor: Actor,
+        **_: object,
+    ) -> VerificationResult:
+        return VerificationResult(
+            verification={"id": VERIFICATION_ID},  # type: ignore[arg-type]
+            report={
+                "id": report_id,
+                "status": "verified_closed",
+                "closed_at": datetime(2026, 8, 23, tzinfo=timezone.utc),
+            },  # type: ignore[arg-type]
+            action={"id": ACTION_ID, "status": "verified", "rework_count": 0},  # type: ignore[arg-type]
+            assignment={
+                "id": ASSIGNMENT_ID,
+                "due_at": datetime(2026, 8, 24, tzinfo=timezone.utc),
+            },  # type: ignore[arg-type]
+        )
+
+    monkeypatch.setattr(reports_api, "verify_report", fake_verify)
+    actor = Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER)
+    payload = VerifyRequest(
+        passed=True,
+        checklist={"hazard_removed": True},
+        notes="The guardrail passed the final inspection.",
+    )
+    background_tasks = BackgroundTasks()
+
+    result = asyncio.run(
+        reports_api.post_verification(
+            REPORT_ID,
+            payload,
+            background_tasks,
+            actor,
+        )
+    )
+
+    assert result["status"] == "verified_closed"
+    assert len(background_tasks.tasks) == 1
+    task = background_tasks.tasks[0]
+    assert task.func is reports_api.run_lesson
+    assert task.args == (REPORT_ID,)
 
 
 def test_verification_validation_maps_to_a_clean_422() -> None:
