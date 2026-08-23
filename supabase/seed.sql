@@ -12,11 +12,14 @@ on conflict (id) do update set
   email = excluded.email,
   raw_user_meta_data = excluded.raw_user_meta_data;
 
-insert into profiles (id, role, preferred_lang) values
-  ('00000000-0000-0000-0000-000000000001', 'reporter', 'en'),
-  ('00000000-0000-0000-0000-000000000002', 'reporter', 'zh-CN'),
-  ('00000000-0000-0000-0000-000000000003', 'reviewer', 'en'),
-  ('00000000-0000-0000-0000-000000000004', 'responsible', 'en'),
-  ('00000000-0000-0000-0000-000000000005', 'crew', 'en'),
-  ('00000000-0000-0000-0000-000000000006', 'admin', 'en')
-on conflict (id) do update set role = excluded.role, preferred_lang = excluded.preferred_lang;
+insert into profiles (id, role, preferred_lang, display_name) values
+  ('00000000-0000-0000-0000-000000000001', 'reporter', 'en', 'Worker Tan'),
+  ('00000000-0000-0000-0000-000000000002', 'reporter', 'zh-CN', '王师傅'),
+  ('00000000-0000-0000-0000-000000000003', 'reviewer', 'en', 'Lim Wei Sheng'),
+  ('00000000-0000-0000-0000-000000000004', 'responsible', 'en', 'Ah Hock'),
+  ('00000000-0000-0000-0000-000000000005', 'crew', 'en', 'Crew Member'),
+  ('00000000-0000-0000-0000-000000000006', 'admin', 'en', 'Site Admin')
+on conflict (id) do update set
+  role = excluded.role,
+  preferred_lang = excluded.preferred_lang,
+  display_name = excluded.display_name;
