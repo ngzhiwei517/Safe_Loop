@@ -1,6 +1,16 @@
-import { getTranslations } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import { notFound } from "next/navigation";
 
-export default async function NotAuthorisedPage() {
-  const t = await getTranslations();
+import { isLocale } from "../../../lib/locales";
+
+export default async function NotAuthorisedPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
+  setRequestLocale(locale);
+  const t = await getTranslations({ locale });
   return <main className="mx-auto max-w-xl px-6 py-16"><h1 className="text-3xl font-bold">{t("app.notAuthorised.title")}</h1><p className="mt-4">{t("app.notAuthorised.detail")}</p></main>;
 }
