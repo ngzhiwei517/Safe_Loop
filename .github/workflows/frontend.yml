@@ -126,6 +126,10 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run complete SafeLoop browser loop
         run: npm --prefix frontend run test:e2e
+      - name: Load and verify the rerunnable demo dataset
+        run: |
+          python scripts/apply_demo_seed.py
+          python scripts/apply_demo_seed.py
       - name: Show backend log on failure
         if: failure()
         run: test ! -f "$RUNNER_TEMP/safeloop-e2e-backend.log" || cat "$RUNNER_TEMP/safeloop-e2e-backend.log"
