@@ -491,6 +491,11 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
         result["closure_receipt"] = None
     result["media"] = media
     result["clarifications"] = [dict(row) for row in clarifications]
+    result["can_answer_clarifications"] = (
+        source is ReportStatus.CLARIFYING
+        and actor.role is Role.REPORTER
+        and actor.profile_id == report["reporter_id"]
+    )
     available: list[dict[str, object]] = []
     for target in allowed_targets(source, actor.actor_type, actor.role):
         transition = find(source, target)

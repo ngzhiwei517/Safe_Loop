@@ -75,6 +75,9 @@ const report: ReportDetail = {
   submitted_at: "2026-08-22T01:02:00Z",
   closed_at: null,
   created_at: "2026-08-22T01:00:00Z",
+  clarify_rounds: 0,
+  clarifications: [],
+  can_answer_clarifications: false,
   media: [
     {
       id: "media-id",

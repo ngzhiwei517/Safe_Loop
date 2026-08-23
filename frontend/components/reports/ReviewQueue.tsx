@@ -266,6 +266,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
             {items.map((report) => (
               <Link
                 className="block rounded-card outline-none focus:ring-2 focus:ring-primaryStrong focus:ring-offset-2 focus:ring-offset-bg"
+                data-report-id={report.id}
                 href={
                   report.status === reportStatus.action_submitted
                     ? `/${locale}/verify/${report.id}`

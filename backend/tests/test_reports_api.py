@@ -71,10 +71,12 @@ def test_available_transitions_differ_without_client_role_logic(
     )
 
     assert reporter_result["available_transitions"] == []
+    assert reporter_result["can_answer_clarifications"] is False
     assert reporter_result["latest_draft"] is None
     assert reporter_result["closure_receipt"] is None
     assert reviewer_result["latest_draft"] is None
     assert reviewer_result["closure_receipt"] is None
+    assert reviewer_result["can_answer_clarifications"] is False
     assert reviewer_result["available_transitions"] == [
         {
             "event": "reject",
@@ -101,6 +103,28 @@ def test_available_transitions_differ_without_client_role_logic(
             "review_decision": "approve",
         },
     ]
+
+
+def test_only_the_owning_reporter_can_answer_clarifications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_report_read(monkeypatch, status="clarifying")
+
+    owner_result = asyncio.run(
+        reports_api.report_detail(
+            REPORT_ID,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+        )
+    )
+    reviewer_result = asyncio.run(
+        reports_api.report_detail(
+            REPORT_ID,
+            Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+        )
+    )
+
+    assert owner_result["can_answer_clarifications"] is True
+    assert reviewer_result["can_answer_clarifications"] is False
 
 
 def test_report_detail_decodes_latest_draft_and_validation_errors(

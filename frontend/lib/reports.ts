@@ -151,6 +151,17 @@ export type VerificationResult = {
   due_at: string;
 };
 
+export type Clarification = {
+  id: string;
+  report_id: string;
+  round: number;
+  gap: string;
+  question: string;
+  answer: string | null;
+  answered_at: string | null;
+  created_at: string;
+};
+
 export type ReportDetail = {
   id: string;
   human_ref: string;
@@ -166,6 +177,9 @@ export type ReportDetail = {
   submitted_at: string | null;
   closed_at: string | null;
   created_at: string;
+  clarify_rounds: number;
+  clarifications: Clarification[];
+  can_answer_clarifications: boolean;
   media: ReportMedia[];
   latest_draft: AiDraft | null;
   current_action: CorrectiveActionDetail | null;
@@ -291,6 +305,22 @@ export function listReports(filters: ReportListFilters, accessToken: string): Pr
 
 export function getTimeline(reportId: string, accessToken: string): Promise<TimelineEntry[]> {
   return apiFetch<TimelineEntry[]>(`/reports/${reportId}/timeline`, accessToken);
+}
+
+export function answerClarification(
+  reportId: string,
+  clarificationId: string,
+  answer: string,
+  accessToken: string,
+): Promise<{ id: string; report_id: string; answered_at: string; round_complete: boolean }> {
+  return apiFetch(
+    `/reports/${reportId}/clarifications/${clarificationId}/answer`,
+    accessToken,
+    {
+      method: "POST",
+      body: JSON.stringify({ answer }),
+    },
+  );
 }
 
 export function transitionReport(

@@ -104,7 +104,7 @@ export function BriefingsPage({ requestedLocale }: { requestedLocale: string }) 
         ) : (
           <div className="space-y-3">
             {briefings.map((briefing) => (
-              <Card className="space-y-3" key={briefing.id}>
+              <Card className="space-y-3" data-report-id={briefing.report_id} key={briefing.id}>
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <h2 className="text-lg font-bold text-ink">

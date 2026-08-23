@@ -415,6 +415,7 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
               return (
                 <Card
                   className={`space-y-4 ${returned ? "border-danger bg-dangerTint" : ""}`}
+                  data-report-id={action.id}
                   key={action.action_id}
                 >
                   {returned && <ReturnedContext {...contextProps} />}

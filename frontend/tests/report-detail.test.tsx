@@ -8,6 +8,7 @@ import { ReportDetail } from "../components/reports/ReportDetail";
 import { defaultLocale, locales } from "../lib/locales";
 import { mediaPhase } from "../lib/media";
 import {
+  answerClarification,
   getReport,
   getTimeline,
   transitionReport,
@@ -18,6 +19,7 @@ import en from "../messages/en.json";
 import zh from "../messages/zh-CN.json";
 
 vi.mock("../lib/reports", () => ({
+  answerClarification: vi.fn(),
   getReport: vi.fn(),
   getTimeline: vi.fn(),
   transitionReport: vi.fn(),
@@ -63,6 +65,9 @@ function reportWith(
     submitted_at: "2026-08-22T01:02:00Z",
     closed_at: null,
     created_at: "2026-08-22T01:00:00Z",
+    clarify_rounds: 0,
+    clarifications: [],
+    can_answer_clarifications: false,
     media: [
       {
         id: "media-id",
@@ -189,6 +194,7 @@ function renderDetail(locale = defaultLocale) {
 
 describe("ReportDetail", () => {
   beforeEach(() => {
+    vi.mocked(answerClarification).mockReset();
     vi.mocked(getReport).mockReset();
     vi.mocked(getTimeline).mockReset();
     vi.mocked(transitionReport).mockReset();
@@ -196,6 +202,12 @@ describe("ReportDetail", () => {
     vi.mocked(transitionReport).mockResolvedValue({
       id: "report-id",
       status: reportStatus.rejected,
+    });
+    vi.mocked(answerClarification).mockResolvedValue({
+      id: "clarification-id",
+      report_id: "report-id",
+      answered_at: "2026-08-22T01:05:00Z",
+      round_complete: true,
     });
   });
   afterEach(cleanup);
@@ -245,6 +257,48 @@ describe("ReportDetail", () => {
     expect(await screen.findByText(en["report.detail.waiting.under_review"])).toBeTruthy();
     expect(screen.queryByText(en["report.detail.actions"])).toBeNull();
     expect(screen.queryByRole("button", { name: en["action.reject"] })).toBeNull();
+  });
+
+  it("lets the reporter answer a pending clarification without exposing an API code", async () => {
+    const report = reportWith([]);
+    report.status = reportStatus.clarifying;
+    report.can_answer_clarifications = true;
+    report.clarifications = [
+      {
+        id: "clarification-id",
+        report_id: "report-id",
+        round: 1,
+        gap: "hazard_detail",
+        question: "What exactly is unsafe?",
+        answer: null,
+        answered_at: null,
+        created_at: "2026-08-22T01:04:00Z",
+      },
+    ];
+    vi.mocked(getReport).mockResolvedValue(report);
+    renderDetail();
+
+    expect(await screen.findByText("What exactly is unsafe?")).toBeTruthy();
+    const submit = screen.getByRole<HTMLButtonElement>("button", {
+      name: en["report.clarification.submit"],
+    });
+    expect(submit.disabled).toBe(true);
+
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByLabelText(en["report.clarification.answerLabel"]),
+      "The temporary edge protection is missing.",
+    );
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(answerClarification).toHaveBeenCalledWith(
+        "report-id",
+        "clarification-id",
+        "The temporary edge protection is missing.",
+        "test-token",
+      ),
+    );
   });
 
   it("renders timeline verbs and actors in Simplified Chinese", async () => {

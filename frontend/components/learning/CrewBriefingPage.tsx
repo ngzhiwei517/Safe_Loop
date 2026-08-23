@@ -176,7 +176,7 @@ export function CrewBriefingPage({
               {briefing.quiz_questions.map((question) => {
                 const result = answers[question.id];
                 return (
-                  <Card className="space-y-4" key={question.id}>
+                  <Card className="space-y-4" data-testid="quiz-question" key={question.id}>
                     <p className="text-sm font-bold text-primary">
                       {t("crew.quiz.questionNumber", { position: question.position })}
                     </p>

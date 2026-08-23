@@ -14,7 +14,8 @@
     "generate-state-machine": "node scripts/generate-state-machine.mjs",
     "start": "next start",
     "tsc": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.4",
@@ -28,6 +29,7 @@
     "qrcode": "1.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@types/node": "22.20.1",
     "@types/react": "19.0.3",
     "@types/react-dom": "19.0.2",

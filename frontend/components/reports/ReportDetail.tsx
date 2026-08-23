@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { defaultLocale, formatDateTime, isLocale } from "../../lib/locales";
 import {
+  answerClarification,
   getReport,
   getTimeline,
   transitionReport,
@@ -34,6 +35,16 @@ const transitionErrorKeys: Record<string, string> = {
   role_not_permitted: "error.role_not_permitted",
   unknown_event: "error.unknown_event",
   database_guard: "error.database_guard",
+};
+
+const clarificationErrorKeys: Record<string, string> = {
+  clarification_actor_forbidden: "error.clarification_actor_forbidden",
+  clarification_forbidden: "error.clarification_forbidden",
+  clarification_answer_required: "error.clarification_answer_required",
+  report_not_clarifying: "error.report_not_clarifying",
+  clarification_not_found: "error.clarification_not_found",
+  clarification_already_answered: "error.clarification_already_answered",
+  clarification_round_invalid: "error.clarification_round_invalid",
 };
 
 function actorKey(entry: TimelineEntry): string {
@@ -68,6 +79,9 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [actionErrorKey, setActionErrorKey] = useState<string | null>(null);
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+  const [answeringClarification, setAnsweringClarification] = useState<string | null>(null);
+  const [clarificationErrorKey, setClarificationErrorKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadFailed(false);
@@ -133,6 +147,33 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
       return;
     }
     void applyTransition(transition);
+  }
+
+  async function submitClarification(clarificationId: string) {
+    const answer = clarificationAnswers[clarificationId]?.trim() ?? "";
+    if (!answer) return;
+    setAnsweringClarification(clarificationId);
+    setClarificationErrorKey(null);
+    try {
+      const {
+        data: { session },
+      } = await createClient().auth.getSession();
+      if (!session) throw new Error("session_required");
+      await answerClarification(id, clarificationId, answer, session.access_token);
+      setClarificationAnswers((current) => {
+        const next = { ...current };
+        delete next[clarificationId];
+        return next;
+      });
+      await load();
+    } catch (error) {
+      const code = error instanceof ApiError ? error.body.detail.code : "";
+      setClarificationErrorKey(
+        clarificationErrorKeys[code] ?? "report.clarification.failureDetail",
+      );
+    } finally {
+      setAnsweringClarification(null);
+    }
   }
 
   if (loading) {
@@ -223,9 +264,12 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
     ? report.media.find((media) => media.id === receipt.after_media_id)
     : undefined;
   const hasReceiptPhotoPair = Boolean(beforePhoto && afterPhoto);
+  const pendingClarifications = report.clarifications.filter(
+    (clarification) => clarification.answer === null,
+  );
 
   return (
-    <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 pb-10 text-ink">
+    <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 pb-10 text-ink" data-report-id={report.id}>
       <header className="grid grid-cols-[44px_1fr_44px] items-center py-5">
         <Link className="grid min-h-11 min-w-11 place-items-center rounded-control" href={`/${locale}`} aria-label={t("report.detail.back")}>
           <ArrowLeftIcon className="h-7 w-7" />
@@ -281,6 +325,58 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
             </dl>
           )}
         </Card>
+
+        {report.can_answer_clarifications && pendingClarifications.length > 0 && (
+          <Card
+            className="space-y-4 border-primary bg-primaryTint"
+            data-testid="clarification-panel"
+          >
+            <div>
+              <h2 className="text-xl font-bold text-ink">
+                {t("report.clarification.title")}
+              </h2>
+              <p className="mt-1 text-sm text-inkMuted">
+                {t("report.clarification.detail")}
+              </p>
+            </div>
+            {pendingClarifications.map((clarification) => {
+              const answer = clarificationAnswers[clarification.id] ?? "";
+              const answering = answeringClarification === clarification.id;
+              return (
+                <section
+                  className="space-y-3 rounded-control border border-border bg-surface p-4"
+                  data-clarification-id={clarification.id}
+                  key={clarification.id}
+                >
+                  <p className="text-base font-bold text-ink">{clarification.question}</p>
+                  <Field
+                    label={t("report.clarification.answerLabel")}
+                    rows={3}
+                    value={answer}
+                    onChange={(event) => setClarificationAnswers((current) => ({
+                      ...current,
+                      [clarification.id]: event.target.value,
+                    }))}
+                  />
+                  <SecondaryButton
+                    disabled={!answer.trim() || answeringClarification !== null}
+                    label={answering
+                      ? t("report.clarification.submitting")
+                      : t("report.clarification.submit")}
+                    onClick={() => void submitClarification(clarification.id)}
+                  />
+                </section>
+              );
+            })}
+            {clarificationErrorKey && (
+              <Banner
+                tone="warning"
+                title={t("report.clarification.failureTitle")}
+                detail={t(clarificationErrorKey)}
+              />
+            )}
+          </Card>
+        )}
 
         <Card className="space-y-4">
           <h2 className="text-xl font-bold">{t("report.detail.timeline")}</h2>

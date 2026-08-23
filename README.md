@@ -69,3 +69,11 @@ The final response includes `available_transitions` computed by the server.
 | Doctor reports missing schema | Apply `0001_schema.sql` and `0002_localised_en_checks.sql`. |
 | Doctor reports missing seed data | Run `supabase/seed.sql` in the SQL Editor. |
 | API returns `debug_auth_disabled` | Set `ALLOW_DEBUG_AUTH=true` only for local Phase 0 use. |
+
+## Browser end-to-end suite
+
+The Playwright suite runs only with `AI_PROVIDER=stub` and refuses any non-loopback Supabase URL.
+CI starts the pinned local Supabase Auth/Postgres containers, resets migrations and seed data,
+starts the frontend, and runs the complete English and Simplified Chinese loops with Chromium.
+Running it locally requires a Docker-compatible runtime and Supabase CLI 2.115.0; after the local
+stack and backend are ready, run `npm run test:e2e` from `frontend/`.
