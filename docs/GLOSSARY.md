@@ -12,3 +12,4 @@ These terms are kept in one catalogue block so the safety officer can replace th
 | `term.workAtHeight` | work at height | TODO-REVIEW：高处作业 |
 | `term.electricalSafety` | electrical safety | TODO-REVIEW：电气安全 |
 | `term.siteSafety` | site safety | TODO-REVIEW：现场安全 |
+| `term.hazard` | hazard | TODO-REVIEW：安全隐患 |

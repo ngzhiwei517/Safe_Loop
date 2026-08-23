@@ -63,6 +63,65 @@ const metrics: MetricsSummary = {
   median_submitted_to_action_assigned_seconds: 14_400,
   median_action_assigned_to_verified_closed_seconds: 27_000,
   reviewer_correction_rate: 0.25,
+  published_briefing_count: 2,
+  crew_reach: 6,
+  anonymous_quiz_response_count: 2,
+  first_attempt_count: 8,
+  first_attempt_pass_rate: 0.75,
+  question_performance: [
+    {
+      question_id: "10000000-0000-0000-0000-000000000001",
+      briefing_id: "20000000-0000-0000-0000-000000000001",
+      position: 1,
+      question: { en: "What should the crew check first?", "zh-CN": "工友首先要检查什么？" },
+      first_attempt_count: 4,
+      first_attempt_correct_count: 3,
+      first_attempt_wrong_count: 1,
+      first_attempt_pass_rate: 0.75,
+    },
+    {
+      question_id: "10000000-0000-0000-0000-000000000002",
+      briefing_id: "20000000-0000-0000-0000-000000000001",
+      position: 2,
+      question: { en: "When should work stop?", "zh-CN": "什么时候必须停工？" },
+      first_attempt_count: 4,
+      first_attempt_correct_count: 2,
+      first_attempt_wrong_count: 2,
+      first_attempt_pass_rate: 0.5,
+    },
+  ],
+  questions_most_often_wrong: [
+    {
+      question_id: "10000000-0000-0000-0000-000000000002",
+      briefing_id: "20000000-0000-0000-0000-000000000001",
+      position: 2,
+      question: { en: "When should work stop?", "zh-CN": "什么时候必须停工？" },
+      first_attempt_count: 4,
+      first_attempt_correct_count: 2,
+      first_attempt_wrong_count: 2,
+      first_attempt_pass_rate: 0.5,
+    },
+  ],
+  repeat_hazard_window_days: 90,
+  repeat_hazards: [
+    {
+      category: "work_at_height",
+      location: "Block A",
+      report_count: 3,
+      recurrence_count: 2,
+      first_closed_at: "2026-07-01T00:00:00Z",
+      latest_closed_at: "2026-08-20T00:00:00Z",
+      responsible_rework: [
+        {
+          profile_id: "30000000-0000-0000-0000-000000000001",
+          display_name: "Fixture Responsible",
+          action_count: 4,
+          reworked_action_count: 2,
+          rework_rate: 0.5,
+        },
+      ],
+    },
+  ],
 };
 
 function renderDashboard(locale = defaultLocale) {
@@ -85,7 +144,9 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByText(en["dashboard.openCases"])).toBeTruthy();
-    expect(screen.getByText(formatPercent(0.5, defaultLocale))).toBeTruthy();
+    expect(
+      screen.getAllByText(formatPercent(0.5, defaultLocale)).length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getByText(formatDurationSeconds(180, defaultLocale)),
     ).toBeTruthy();
@@ -96,6 +157,12 @@ describe("DashboardPage", () => {
       screen.getByText(formatDurationSeconds(27_000, defaultLocale)),
     ).toBeTruthy();
     expect(screen.getByText(formatPercent(0.25, defaultLocale))).toBeTruthy();
+    expect(screen.getByText(en["dashboard.learningQuestion"])).toBeTruthy();
+    expect(screen.getAllByText(formatPercent(0.75, defaultLocale))).toHaveLength(2);
+    expect(screen.getByText("What should the crew check first?")).toBeTruthy();
+    expect(screen.getByText(en["dashboard.mostOftenWrong"])).toBeTruthy();
+    expect(screen.getByText("work_at_height")).toBeTruthy();
+    expect(screen.getByText("Fixture Responsible")).toBeTruthy();
     expect(getMetricsSummary).toHaveBeenCalledWith("test-token");
   });
 
@@ -104,6 +171,11 @@ describe("DashboardPage", () => {
 
     expect(await screen.findByText(zh["dashboard.title"])).toBeTruthy();
     expect(screen.getByText(zh["dashboard.openByStatus"])).toBeTruthy();
-    expect(screen.getByText(formatPercent(0.5, locales[1]))).toBeTruthy();
+    expect(
+      screen.getAllByText(formatPercent(0.5, locales[1])).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(zh["dashboard.learningQuestion"])).toBeTruthy();
+    expect(screen.getByText("工友首先要检查什么？")).toBeTruthy();
+    expect(screen.getByText(zh["dashboard.mostOftenWrong"])).toBeTruthy();
   });
 });

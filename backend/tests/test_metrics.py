@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import AsyncIterator
 from uuid import UUID
 
@@ -18,6 +19,9 @@ from app.services.report_service import Actor
 
 REVIEWER_ID = UUID("00000000-0000-0000-0000-000000000003")
 REPORTER_ID = UUID("00000000-0000-0000-0000-000000000001")
+BRIEFING_ID = UUID("10000000-0000-0000-0000-000000000001")
+QUESTION_ONE_ID = UUID("20000000-0000-0000-0000-000000000001")
+QUESTION_TWO_ID = UUID("20000000-0000-0000-0000-000000000002")
 
 
 class FakeTransaction:
@@ -37,13 +41,67 @@ class FakeConnection:
     def transaction(self, **_: object) -> FakeTransaction:
         return FakeTransaction()
 
-    async def fetch(self, *_: object) -> list[dict[str, object]]:
-        return [
-            {"status": ReportStatus.UNDER_REVIEW.value, "report_count": 3},
-            {"status": ReportStatus.ACTION_ASSIGNED.value, "report_count": 2},
-        ]
+    async def fetch(self, query: str, *_: object) -> list[dict[str, object]]:
+        if "group by status" in query:
+            return [
+                {"status": ReportStatus.UNDER_REVIEW.value, "report_count": 3},
+                {"status": ReportStatus.ACTION_ASSIGNED.value, "report_count": 2},
+            ]
+        if "ranked_responses" in query:
+            return [
+                {
+                    "question_id": QUESTION_ONE_ID,
+                    "briefing_id": BRIEFING_ID,
+                    "position": 1,
+                    "question": {"en": "Question one", "zh-CN": "问题一"},
+                    "first_attempt_count": 4,
+                    "first_attempt_correct_count": 3,
+                    "first_attempt_wrong_count": 1,
+                    "first_attempt_pass_rate": 0.75,
+                },
+                {
+                    "question_id": QUESTION_TWO_ID,
+                    "briefing_id": BRIEFING_ID,
+                    "position": 2,
+                    "question": {"en": "Question two", "zh-CN": "问题二"},
+                    "first_attempt_count": 4,
+                    "first_attempt_correct_count": 2,
+                    "first_attempt_wrong_count": 2,
+                    "first_attempt_pass_rate": 0.5,
+                },
+            ]
+        if "closed_reports" in query:
+            closed_at = datetime(2026, 8, 20, tzinfo=timezone.utc)
+            return [
+                {
+                    "category": "work_at_height",
+                    "location": "Block A",
+                    "report_count": 3,
+                    "recurrence_count": 2,
+                    "first_closed_at": closed_at,
+                    "latest_closed_at": closed_at,
+                    "responsible_rework": [
+                        {
+                            "profile_id": str(REPORTER_ID),
+                            "display_name": "Responsible team",
+                            "action_count": 4,
+                            "reworked_action_count": 1,
+                            "rework_rate": 0.25,
+                        }
+                    ],
+                }
+            ]
+        raise AssertionError("unexpected metrics query")
 
-    async def fetchrow(self, *_: object) -> dict[str, object]:
+    async def fetchrow(self, query: str, *_: object) -> dict[str, object]:
+        if "eligible_responses" in query:
+            return {
+                "published_briefing_count": 2,
+                "crew_reach": 4,
+                "anonymous_quiz_response_count": 3,
+                "first_attempt_count": 8,
+                "first_attempt_pass_rate": 0.625,
+            }
         return {
             "overdue_count": 1,
             "rework_rate": 0.5,
@@ -75,6 +133,15 @@ def test_metrics_summary_preserves_zero_statuses_and_explicit_seconds(
     assert summary.overdue_count == 1
     assert summary.rework_rate == 0.5
     assert summary.median_submitted_to_under_review_seconds == 180.0
+    assert summary.published_briefing_count == 2
+    assert summary.crew_reach == 4
+    assert summary.anonymous_quiz_response_count == 3
+    assert summary.first_attempt_count == 8
+    assert summary.first_attempt_pass_rate == 0.625
+    assert summary.question_performance[0].question["zh-CN"] == "问题一"
+    assert summary.questions_most_often_wrong[0].question_id == QUESTION_TWO_ID
+    assert summary.repeat_hazards[0].recurrence_count == 2
+    assert summary.repeat_hazards[0].responsible_rework[0].rework_rate == 0.25
 
 
 @pytest.mark.parametrize(
