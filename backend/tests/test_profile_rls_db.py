@@ -60,8 +60,8 @@ def test_profile_grants_and_policies_are_least_privilege() -> None:
                 """
             )
             assert {(row["policyname"], row["cmd"]) for row in policies} == {
-                ("profiles_select_self", "SELECT"),
-                ("profiles_update_preferred_lang_self", "UPDATE"),
+                ("profiles_select_visible", "SELECT"),
+                ("profiles_update_own_language", "UPDATE"),
             }
         finally:
             await conn.close()
