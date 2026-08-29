@@ -20,7 +20,11 @@ async def init_pool(database_url: str | None = None) -> asyncpg.Pool:
         url = database_url or get_settings().database_url
         if not url:
             raise ValueError("DATABASE_URL is required")
-        _pool = await asyncpg.create_pool(url)
+        # Supabase's transaction pooler (port 6543) can move successive
+        # statements between database connections. Cached prepared statements
+        # are connection-local, so asyncpg must not reuse them through that
+        # pooler.
+        _pool = await asyncpg.create_pool(url, statement_cache_size=0)
     return _pool
 
 
