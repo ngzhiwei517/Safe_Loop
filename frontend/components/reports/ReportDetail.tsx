@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { ApiError } from "../../lib/api";
 import { defaultLocale, formatDateTime, isLocale } from "../../lib/locales";
+import { isAudioMimeType, isImageMimeType } from "../../lib/media";
 import {
   answerClarification,
   getReport,
@@ -301,6 +302,8 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
   const pendingClarifications = report.clarifications.filter(
     (clarification) => clarification.answer === null,
   );
+  const photoMedia = report.media.filter((item) => isImageMimeType(item.mime_type));
+  const audioMedia = report.media.filter((item) => isAudioMimeType(item.mime_type));
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[430px] flex-col bg-bg text-ink">
@@ -327,15 +330,32 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
           </p>
         </Card>
 
-        {report.media.length > 0 && (
+        {photoMedia.length > 0 && (
           <Card className="space-y-3">
             <h2 className="text-xl font-bold">{t("report.media.photos")}</h2>
             <PhotoStrip
-              photos={report.media.map((item) => ({
+              photos={photoMedia.map((item) => ({
                 src: item.signed_url,
                 alt: item.caption?.trim() || t("report.media.photoAlt"),
               }))}
             />
+          </Card>
+        )}
+
+        {audioMedia.length > 0 && (
+          <Card className="space-y-3">
+            <h2 className="text-xl font-bold">{t("report.media.audio")}</h2>
+            {audioMedia.map((item) => (
+              <audio
+                key={item.id}
+                className="w-full"
+                controls
+                preload="metadata"
+                src={item.signed_url}
+              >
+                {t("report.voice.playbackUnsupported")}
+              </audio>
+            ))}
           </Card>
         )}
 

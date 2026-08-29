@@ -13,6 +13,7 @@ import {
   isLocale,
   locales,
 } from "../../lib/locales";
+import { isAudioMimeType, isImageMimeType } from "../../lib/media";
 import {
   getReport,
   getTimeline,
@@ -299,6 +300,8 @@ export function ReviewDecisionPage({
   }
 
   const decisions = report.available_transitions.filter(isReviewTransition);
+  const photoMedia = report.media.filter((item) => isImageMimeType(item.mime_type));
+  const audioMedia = report.media.filter((item) => isAudioMimeType(item.mime_type));
   const timelineEvents = timeline.map((entry) => ({
     id: entry.id,
     title: t(`timeline.event.${entry.event}`),
@@ -367,15 +370,32 @@ export function ReviewDecisionPage({
           </p>
         </Card>
 
-        {report.media.length > 0 && (
+        {photoMedia.length > 0 && (
           <Card className="space-y-3">
             <h2 className="text-xl font-bold">{t("report.media.photos")}</h2>
             <PhotoStrip
-              photos={report.media.map((item) => ({
+              photos={photoMedia.map((item) => ({
                 src: item.signed_url,
                 alt: item.caption?.trim() || t("report.media.photoAlt"),
               }))}
             />
+          </Card>
+        )}
+
+        {audioMedia.length > 0 && (
+          <Card className="space-y-3">
+            <h2 className="text-xl font-bold">{t("report.media.audio")}</h2>
+            {audioMedia.map((item) => (
+              <audio
+                key={item.id}
+                className="w-full"
+                controls
+                preload="metadata"
+                src={item.signed_url}
+              >
+                {t("report.voice.playbackUnsupported")}
+              </audio>
+            ))}
           </Card>
         )}
 

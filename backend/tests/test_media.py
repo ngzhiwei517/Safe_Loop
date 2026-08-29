@@ -16,9 +16,11 @@ from app.domain.enums import ActorType, MediaPhase, Role
 from app.services.media_service import (
     MediaError,
     MediaPolicy,
+    audio_media_policy,
     assert_report_readable,
     create_signed_url,
     create_signed_urls,
+    media_policy_for_mime_type,
     validate_media_registration,
 )
 from app.services.report_service import Actor
@@ -31,6 +33,12 @@ IMAGE_POLICY = MediaPolicy(
     bucket="report-media",
     allowed_mime_types=frozenset({"image/jpeg", "image/png", "image/webp"}),
     max_bytes=10 * 1024 * 1024,
+    signed_url_ttl_seconds=600,
+)
+AUDIO_POLICY = MediaPolicy(
+    bucket="report-audio",
+    allowed_mime_types=frozenset({"audio/webm", "audio/mp4", "audio/mpeg"}),
+    max_bytes=25 * 1024 * 1024,
     signed_url_ttl_seconds=600,
 )
 
@@ -114,19 +122,32 @@ def test_media_over_ten_megabytes_is_rejected() -> None:
     assert media_error(error.value).status_code == 413
 
 
-def test_future_audio_type_is_a_policy_change() -> None:
-    audio_policy = MediaPolicy(
-        bucket="report-media",
-        allowed_mime_types=frozenset({"audio/mp4"}),
-        max_bytes=25 * 1024 * 1024,
-        signed_url_ttl_seconds=600,
-    )
+@pytest.mark.parametrize("mime_type", ["audio/webm", "audio/mp4", "audio/mpeg"])
+def test_allowed_audio_types_are_accepted(mime_type: str) -> None:
     assert validate(
-        requested_mime_type="audio/mp4",
-        object_mime_type="audio/mp4",
+        requested_mime_type=mime_type,
+        object_mime_type=mime_type,
         object_size=20 * 1024 * 1024,
-        policy=audio_policy,
-    ) == "audio/mp4"
+        policy=AUDIO_POLICY,
+    ) == mime_type
+
+
+def test_audio_policy_uses_private_audio_bucket_and_25mb_cap() -> None:
+    policy = audio_media_policy()
+    assert policy.bucket == "report-audio"
+    assert policy.max_bytes == 25 * 1024 * 1024
+    assert media_policy_for_mime_type("audio/webm;codecs=opus") == policy
+
+
+def test_audio_over_twenty_five_megabytes_is_rejected() -> None:
+    with pytest.raises(MediaError) as error:
+        validate(
+            requested_mime_type="audio/webm",
+            object_mime_type="audio/webm",
+            object_size=AUDIO_POLICY.max_bytes + 1,
+            policy=AUDIO_POLICY,
+        )
+    assert error.value.code == "media_too_large"
 
 
 def test_only_owner_reviewer_or_admin_can_receive_signed_media() -> None:

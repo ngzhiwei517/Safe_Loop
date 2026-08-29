@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     report_media_allowed_mime_types: str = "image/jpeg,image/png,image/webp"
     report_media_max_bytes: int = 10 * 1024 * 1024
     report_media_signed_url_ttl_seconds: int = 600
+    report_audio_bucket: str = "report-audio"
+    report_audio_allowed_mime_types: str = "audio/webm,audio/mp4,audio/mpeg"
+    report_audio_max_bytes: int = 25 * 1024 * 1024
+    report_audio_retention_days: int = Field(default=90, ge=1)
     documents_bucket: str = "documents"
     documents_max_bytes: int = 25 * 1024 * 1024
     alert_escalate_minutes: int = 5

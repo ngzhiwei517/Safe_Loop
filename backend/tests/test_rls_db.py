@@ -33,6 +33,7 @@ PROFILE_IDS: Final = (
 
 REPORT_CHILD_TABLES: Final = (
     "report_media",
+    "transcripts",
     "clarifications",
     "ai_drafts",
     "review_decisions",
@@ -63,6 +64,7 @@ EXPECTED_POLICIES: Final = {
     ("profiles", "profiles_update_own_language", "UPDATE"),
     ("reports", "reports_select_visible", "SELECT"),
     ("report_media", "report_media_select_visible_report", "SELECT"),
+    ("transcripts", "transcripts_select_visible_report", "SELECT"),
     ("clarifications", "clarifications_select_visible_report", "SELECT"),
     ("ai_drafts", "ai_drafts_select_visible_report", "SELECT"),
     ("review_decisions", "review_decisions_select_visible_report", "SELECT"),
@@ -188,6 +190,20 @@ async def seed_matrix(conn: asyncpg.Connection[asyncpg.Record]) -> MatrixRows:
         """,
         other_report,
         f"{OTHER_REPORTER_ID}/{other_report}/{uuid4()}.jpg",
+    )
+    own_transcript = await conn.fetchval(
+        """
+        insert into public.transcripts (media_id, provider, model, text_raw)
+        values ($1, 'stub', 'stub-transcription', 'own transcript') returning id
+        """,
+        own_media,
+    )
+    other_transcript = await conn.fetchval(
+        """
+        insert into public.transcripts (media_id, provider, model, text_raw)
+        values ($1, 'stub', 'stub-transcription', 'other transcript') returning id
+        """,
+        other_media,
     )
 
     own_clarification = await conn.fetchval(
@@ -511,6 +527,7 @@ async def seed_matrix(conn: asyncpg.Connection[asyncpg.Record]) -> MatrixRows:
         other_report=other_report,
         own_rows={
             "report_media": own_media,
+            "transcripts": own_transcript,
             "clarifications": own_clarification,
             "ai_drafts": own_draft,
             "review_decisions": own_decision,
@@ -521,6 +538,7 @@ async def seed_matrix(conn: asyncpg.Connection[asyncpg.Record]) -> MatrixRows:
         },
         other_rows={
             "report_media": other_media,
+            "transcripts": other_transcript,
             "clarifications": other_clarification,
             "ai_drafts": other_draft,
             "review_decisions": other_decision,
@@ -986,6 +1004,7 @@ def test_forbidden_writes_fail_and_narrow_writes_stay_narrow() -> None:
 
             for table in (
                 "report_media",
+                "transcripts",
                 "clarifications",
                 "ai_drafts",
                 "review_decisions",
@@ -1022,10 +1041,13 @@ def test_storage_policies_use_guarded_predicates() -> None:
                 select policyname, coalesce(qual, '') || coalesce(with_check, '') as expression
                 from pg_policies
                 where schemaname = 'storage'
-                  and policyname like 'report_media_%'
+                  and (
+                    policyname like 'report_media_%'
+                    or policyname like 'report_audio_%'
+                  )
                 """
             )
-            assert len(policies) == 6
+            assert len(policies) == 12
             expressions = " ".join(row["expression"] for row in policies)
             assert "safeloop_owns_report" in expressions
             assert "safeloop_has_active_assignment" in expressions

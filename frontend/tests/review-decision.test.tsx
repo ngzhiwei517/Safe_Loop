@@ -223,6 +223,30 @@ describe("ReviewDecisionPage", () => {
     ).toBeTruthy();
   });
 
+  it("renders report audio with the server-signed URL", async () => {
+    vi.mocked(getReport).mockResolvedValue({
+      ...report,
+      media: [
+        ...report.media,
+        {
+          id: "audio-id",
+          storage_path: "private/report.mp4",
+          mime_type: "audio/mp4",
+          phase: mediaPhase.original,
+          caption: null,
+          retention_until: "2026-11-20T01:00:00Z",
+          signed_url: "https://project.example/report.mp4?token=signed",
+          signed_url_expires_at: "2026-08-22T01:10:00Z",
+        },
+      ],
+    });
+    renderReview();
+
+    expect(await screen.findByText(en["report.media.audio"])).toBeTruthy();
+    expect(document.querySelector("audio")?.getAttribute("src"))
+      .toBe("https://project.example/report.mp4?token=signed");
+  });
+
   it("does not invent a decision the server omitted", async () => {
     vi.mocked(getReport).mockResolvedValue({
       ...report,

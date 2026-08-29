@@ -6,6 +6,7 @@ import {
   downscaleImage,
   mediaPhase,
   scaledImageDimensions,
+  uploadReportAudio,
   uploadReportPhoto,
   type ImageDecoder,
 } from "../lib/media";
@@ -117,7 +118,10 @@ describe("report media", () => {
   });
 
   it("reuses the same uploader for corrective-action evidence", async () => {
-    const upload = vi.fn(async () => ({ data: {}, error: null }));
+    const upload = vi.fn(async (_path: string, _file: File, _options: object) => ({
+      data: {},
+      error: null,
+    }));
     const client = {
       storage: {
         from: () => ({
@@ -154,5 +158,91 @@ describe("report media", () => {
         body: expect.stringContaining('"phase":"evidence"'),
       },
     );
+  });
+
+  it("uploads audio to the private audio bucket with 90-day retention metadata", async () => {
+    const upload = vi.fn(async (_path: string, _file: File, _options: object) => ({
+      data: {},
+      error: null,
+    }));
+    const remove = vi.fn(async () => ({ data: [], error: null }));
+    const from = vi.fn(() => ({ upload, remove }));
+    const client = { storage: { from } } as unknown as SupabaseClient;
+    vi.mocked(apiFetch).mockResolvedValue({
+      id: "audio-id",
+      report_id: "report-id",
+      storage_path: "path",
+      mime_type: "audio/webm",
+      phase: mediaPhase.original,
+      caption: null,
+      retention_until: "2099-01-01T00:00:00Z",
+    });
+    const clip = new File(["audio"], "report.webm", { type: "audio/webm" });
+
+    await uploadReportAudio({
+      client,
+      file: clip,
+      userId: "reporter-id",
+      reportId: "report-id",
+      accessToken: "test-token",
+    });
+
+    expect(from).toHaveBeenCalledWith("report-audio");
+    const storagePath = upload.mock.calls[0][0];
+    expect(storagePath).toMatch(/^reporter-id\/report-id\/[0-9a-f-]+\.webm$/);
+    expect(upload).toHaveBeenCalledWith(
+      storagePath,
+      clip,
+      expect.objectContaining({
+        contentType: "audio/webm",
+        upsert: false,
+        metadata: expect.objectContaining({
+          retention_days: 90,
+          retention_until: expect.any(String),
+        }),
+      }),
+    );
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/reports/report-id/media",
+      "test-token",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          storage_path: storagePath,
+          mime_type: "audio/webm",
+          phase: mediaPhase.original,
+          caption: null,
+        }),
+      },
+    );
+  });
+
+  it("rejects unsupported and oversized audio before upload", async () => {
+    const upload = vi.fn();
+    const client = {
+      storage: { from: () => ({ upload, remove: vi.fn() }) },
+    } as unknown as SupabaseClient;
+
+    await expect(uploadReportAudio({
+      client,
+      file: new File(["audio"], "report.ogg", { type: "audio/ogg" }),
+      userId: "reporter-id",
+      reportId: "report-id",
+      accessToken: "test-token",
+    })).rejects.toMatchObject({ code: "media_type_not_allowed" });
+
+    const oversized = new File(
+      [new Uint8Array(25 * 1024 * 1024 + 1)],
+      "report.mp4",
+      { type: "audio/mp4" },
+    );
+    await expect(uploadReportAudio({
+      client,
+      file: oversized,
+      userId: "reporter-id",
+      reportId: "report-id",
+      accessToken: "test-token",
+    })).rejects.toMatchObject({ code: "media_too_large" });
+    expect(upload).not.toHaveBeenCalled();
   });
 });

@@ -9,13 +9,19 @@ export const mediaPhase = {
 
 export type MediaPhase = (typeof mediaPhase)[keyof typeof mediaPhase];
 
-const imageMimeTypes = ["image/jpeg", "image/png", "image/webp"] as const;
+export const imageMimeTypes = ["image/jpeg", "image/png", "image/webp"] as const;
 type ImageMimeType = (typeof imageMimeTypes)[number];
+export const audioMimeTypes = ["audio/webm", "audio/mp4", "audio/mpeg"] as const;
+export type AudioMimeType = (typeof audioMimeTypes)[number];
 
 const reportMediaBucket =
   process.env.NEXT_PUBLIC_REPORT_MEDIA_BUCKET ?? "report-media";
+const reportAudioBucket =
+  process.env.NEXT_PUBLIC_REPORT_AUDIO_BUCKET ?? "report-audio";
 const maxImageDimension = 1600;
 const maxImageBytes = 10 * 1024 * 1024;
+const maxAudioBytes = 25 * 1024 * 1024;
+const audioRetentionDays = 90;
 
 export class MediaUploadError extends Error {
   constructor(readonly code: string) {
@@ -44,8 +50,17 @@ export function scaledImageDimensions(
   };
 }
 
-function isImageMimeType(value: string): value is ImageMimeType {
+export function isImageMimeType(value: string): value is ImageMimeType {
   return imageMimeTypes.some((mimeType) => mimeType === value);
+}
+
+export function normalizedAudioMimeType(value: string): AudioMimeType | null {
+  const normalized = value.trim().toLowerCase().split(";", 1)[0];
+  return audioMimeTypes.find((mimeType) => mimeType === normalized) ?? null;
+}
+
+export function isAudioMimeType(value: string): boolean {
+  return normalizedAudioMimeType(value) !== null;
 }
 
 async function decodeBrowserImage(file: File): Promise<DecodedImage> {
@@ -108,6 +123,7 @@ export type RegisteredMedia = {
   mime_type: string;
   phase: MediaPhase;
   caption: string | null;
+  retention_until?: string | null;
 };
 
 export type ReportPhotoUpload = {
@@ -124,7 +140,7 @@ type UploadOptions = ReportPhotoUpload & {
   accessToken: string;
 };
 
-function fileExtension(mimeType: ImageMimeType): string {
+function imageFileExtension(mimeType: ImageMimeType): string {
   if (mimeType === "image/jpeg") return "jpg";
   return mimeType.split("/")[1];
 }
@@ -147,7 +163,7 @@ export async function uploadReportPhoto({
     throw new MediaUploadError("media_too_large");
   }
 
-  const storagePath = `${userId}/${reportId}/${crypto.randomUUID()}.${fileExtension(resized.type)}`;
+  const storagePath = `${userId}/${reportId}/${crypto.randomUUID()}.${imageFileExtension(resized.type)}`;
   const bucket = client.storage.from(reportMediaBucket);
   const { error } = await bucket.upload(storagePath, resized, {
     contentType: resized.type,
@@ -168,6 +184,77 @@ export async function uploadReportPhoto({
           mime_type: resized.type,
           phase,
           caption,
+        }),
+      },
+    );
+  } catch (registrationError) {
+    await bucket.remove([storagePath]);
+    throw registrationError;
+  }
+}
+
+export type ReportAudioUpload = {
+  client: SupabaseClient;
+  file: File;
+  userId: string;
+};
+
+type AudioUploadOptions = ReportAudioUpload & {
+  reportId: string;
+  accessToken: string;
+};
+
+function audioFileExtension(mimeType: AudioMimeType): string {
+  if (mimeType === "audio/mpeg") return "mp3";
+  return mimeType.split("/")[1];
+}
+
+export async function uploadReportAudio({
+  client,
+  file,
+  userId,
+  reportId,
+  accessToken,
+}: AudioUploadOptions): Promise<RegisteredMedia> {
+  const mimeType = normalizedAudioMimeType(file.type);
+  if (!mimeType) {
+    throw new MediaUploadError("media_type_not_allowed");
+  }
+  if (file.size <= 0) {
+    throw new MediaUploadError("media_object_invalid");
+  }
+  if (file.size > maxAudioBytes) {
+    throw new MediaUploadError("media_too_large");
+  }
+
+  const storagePath = `${userId}/${reportId}/${crypto.randomUUID()}.${audioFileExtension(mimeType)}`;
+  const bucket = client.storage.from(reportAudioBucket);
+  const retentionUntil = new Date(
+    Date.now() + audioRetentionDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const { error } = await bucket.upload(storagePath, file, {
+    contentType: mimeType,
+    upsert: false,
+    metadata: {
+      retention_days: audioRetentionDays,
+      retention_until: retentionUntil,
+    },
+  });
+  if (error) {
+    throw new MediaUploadError("media_upload_failed");
+  }
+
+  try {
+    return await apiFetch<RegisteredMedia>(
+      `/reports/${reportId}/media`,
+      accessToken,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          storage_path: storagePath,
+          mime_type: mimeType,
+          phase: mediaPhase.original,
+          caption: null,
         }),
       },
     );

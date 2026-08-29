@@ -71,11 +71,11 @@ async def main() -> int:
                 select count(*) from pg_trigger
                 where not tgisinternal and tgname in (
                   'enforce_status_actor', 'ai_drafts_no_update',
-                  'verifications_no_update'
+                  'verifications_no_update', 'transcripts_no_update'
                 )
                 """
             )
-            if trigger_count != 3:
+            if trigger_count != 4:
                 return fail("FAIL guard triggers: apply the database guard migration.")
         except Exception:
             return fail("FAIL guard triggers: inspect the database migration state.")

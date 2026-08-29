@@ -68,7 +68,11 @@ async def check_storage(*, client: httpx.AsyncClient | None = None) -> None:
         timeout=settings.deep_health_timeout_seconds
     )
     try:
-        for bucket in (settings.report_media_bucket, settings.documents_bucket):
+        for bucket in (
+            settings.report_media_bucket,
+            settings.report_audio_bucket,
+            settings.documents_bucket,
+        ):
             endpoint = (
                 f"{settings.supabase_url.rstrip('/')}/storage/v1/bucket/"
                 f"{quote(bucket, safe='')}"

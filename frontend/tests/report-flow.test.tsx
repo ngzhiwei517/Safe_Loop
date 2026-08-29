@@ -119,6 +119,7 @@ describe("ReportFlow", () => {
       "test-token",
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -152,6 +153,7 @@ describe("ReportFlow", () => {
         userId: "reporter-id",
         caption: "Loose edge protection",
       }),
+      undefined,
       undefined,
     );
   });

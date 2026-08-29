@@ -96,6 +96,40 @@ describe("fileReport", () => {
     );
   });
 
+  it("uploads and registers a voice clip before submission", async () => {
+    const upload = vi.fn(async () => ({ data: {}, error: null }));
+    const from = vi.fn(() => ({
+      upload,
+      remove: vi.fn(async () => ({ data: [], error: null })),
+    }));
+    const client = { storage: { from } } as unknown as SupabaseClient;
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce({ id: "report-id" })
+      .mockResolvedValueOnce({ id: "audio-id" })
+      .mockResolvedValueOnce({
+        id: "report-id",
+        human_ref: "SL-2026-00001",
+        status: reportStatus.submitted,
+      });
+
+    await fileReport(
+      input,
+      "test-token",
+      undefined,
+      undefined,
+      {
+        client,
+        file: new File(["voice"], "report.webm", { type: "audio/webm" }),
+        userId: "reporter-id",
+      },
+    );
+
+    expect(from).toHaveBeenCalledWith("report-audio");
+    expect(vi.mocked(apiFetch).mock.calls[1][0]).toBe("/reports/report-id/media");
+    expect(vi.mocked(apiFetch).mock.calls[2][0])
+      .toBe("/reports/report-id/transition");
+  });
+
   it("passes every queue filter through one keyset-paginated request", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({ items: [], next_cursor: null });
 

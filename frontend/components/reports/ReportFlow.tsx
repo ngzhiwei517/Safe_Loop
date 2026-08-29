@@ -41,6 +41,7 @@ import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
 import { Card } from "../ui/Card";
 import { Field } from "../ui/Field";
+import { VoiceRecorder } from "./VoiceRecorder";
 
 type FlowStep = "capture" | "question" | "urgent" | "review";
 type DangerAnswer = "yes" | "no" | null;
@@ -68,6 +69,7 @@ export function ReportFlow() {
   const [alertFailed, setAlertFailed] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [audio, setAudio] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
   const [missingFields, setMissingFields] = useState<RequiredReportField[]>([]);
@@ -204,6 +206,13 @@ export function ReportFlow() {
           }
           : undefined,
         draftId ?? undefined,
+        audio
+          ? {
+              client: supabase,
+              file: audio,
+              userId: session.user.id,
+            }
+          : undefined,
       );
       try {
         sessionStorage.setItem(
@@ -361,6 +370,7 @@ export function ReportFlow() {
                 clearMissingField("description", event.target.value);
               }}
             />
+            <VoiceRecorder value={audio} onChange={setAudio} />
             <Field
               id="capture-location"
               label={t("report.new.requiredLabel", {
@@ -515,6 +525,7 @@ export function ReportFlow() {
                 clearMissingField("description", event.target.value);
               }}
             />
+            <VoiceRecorder value={audio} onChange={setAudio} />
             <Field
               id="report-location"
               label={t("report.new.requiredLabel", {

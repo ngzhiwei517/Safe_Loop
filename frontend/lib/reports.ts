@@ -1,6 +1,12 @@
 import { apiFetch } from "./api";
 import type { Locale } from "./locales";
-import { uploadReportPhoto, type MediaPhase, type ReportPhotoUpload } from "./media";
+import {
+  uploadReportAudio,
+  uploadReportPhoto,
+  type MediaPhase,
+  type ReportAudioUpload,
+  type ReportPhotoUpload,
+} from "./media";
 import { reportStatus, type ReportStatus } from "./stateMachine";
 
 export const urgencyLevels = ["low", "medium", "high", "critical"] as const;
@@ -27,6 +33,7 @@ export type ReportMedia = {
   phase: MediaPhase;
   caption: string | null;
   corrective_action_id?: string | null;
+  retention_until?: string | null;
   created_at?: string;
   signed_url: string;
   signed_url_expires_at: string;
@@ -256,6 +263,7 @@ export async function fileReport(
   accessToken: string,
   photo?: ReportPhotoUpload,
   existingDraftId?: string,
+  audio?: ReportAudioUpload,
 ): Promise<SubmittedReport> {
   const created = existingDraftId
     ? await apiFetch<CreatedReport>(`/reports/${existingDraftId}`, accessToken, {
@@ -266,6 +274,13 @@ export async function fileReport(
   if (photo) {
     await uploadReportPhoto({
       ...photo,
+      reportId: created.id,
+      accessToken,
+    });
+  }
+  if (audio) {
+    await uploadReportAudio({
+      ...audio,
       reportId: created.id,
       accessToken,
     });

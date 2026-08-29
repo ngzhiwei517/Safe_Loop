@@ -250,6 +250,27 @@ describe("ReportDetail", () => {
     );
   });
 
+  it("plays stored audio from its signed URL without treating it as a photo", async () => {
+    const report = reportWith([]);
+    report.media.push({
+      id: "audio-id",
+      storage_path: "private/report.webm",
+      mime_type: "audio/webm",
+      phase: mediaPhase.original,
+      caption: null,
+      retention_until: "2026-11-20T01:00:00Z",
+      signed_url: "https://project.example/report.webm?token=signed",
+      signed_url_expires_at: "2026-08-22T01:10:00Z",
+    });
+    vi.mocked(getReport).mockResolvedValue(report);
+    renderDetail();
+
+    expect(await screen.findByText(en["report.media.audio"])).toBeTruthy();
+    expect(document.querySelector("audio")?.getAttribute("src"))
+      .toBe("https://project.example/report.webm?token=signed");
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+  });
+
   it("shows waiting copy when the server returns no reporter actions", async () => {
     vi.mocked(getReport).mockResolvedValue(reportWith([]));
     renderDetail();

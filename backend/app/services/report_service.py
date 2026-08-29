@@ -255,6 +255,7 @@ async def list_reports(
           from report_media
           where report_media.report_id = queue_page.id
             and report_media.phase = 'original'::media_phase
+            and report_media.mime_type in ('image/jpeg', 'image/png', 'image/webp')
           order by report_media.created_at, report_media.id
           limit 1
         ) media on true
