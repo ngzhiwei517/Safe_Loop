@@ -128,8 +128,8 @@ def test_voice_edit_preserves_raw_transcript_and_submits_confirmed_text() -> Non
                 await conn.execute(
                     """
                     insert into report_media (
-                      id, report_id, storage_path, mime_type, byte_size, phase
-                    ) values ($1, $2, $3, 'audio/webm', 5, 'initial')
+                      id, report_id, storage_path, mime_type, phase
+                    ) values ($1, $2, $3, 'audio/webm', 'original')
                     """,
                     media_id,
                     report_id,
