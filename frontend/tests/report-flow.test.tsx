@@ -106,7 +106,8 @@ describe("ReportFlow", () => {
     renderFlow();
     expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))
       .toBe(`/${defaultLocale}/reports`);
-    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
+    expect(screen.getByRole("link", { name: en["app.profile"] }).getAttribute("href"))
+      .toBe(`/${defaultLocale}/profile`);
     const user = await reachReview("Loose edge protection");
     await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
     await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/${defaultLocale}/report/report-id`));

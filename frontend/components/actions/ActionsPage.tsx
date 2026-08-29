@@ -3,13 +3,10 @@
 import {
   ArrowLeftIcon,
   BellIcon,
-  BookOpenIcon,
   CameraIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  IdentificationIcon,
   MapPinIcon,
-  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
 import { type ChangeEvent, useCallback, useEffect, useState } from "react";
@@ -34,6 +31,7 @@ import {
   uploadReportPhoto,
 } from "../../lib/media";
 import { createClient } from "../../lib/supabase/browser";
+import { useRoleNavigation } from "../navigation/useRoleNavigation";
 import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
@@ -120,6 +118,7 @@ function ReturnedContext({
 export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useRoleNavigation(locale, "responsible");
   const [actions, setActions] = useState<OpenAction[]>([]);
   const [selected, setSelected] = useState<OpenAction | null>(null);
   const [completedNote, setCompletedNote] = useState("");
@@ -241,24 +240,6 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
       ]}
     />
   );
-  const navItems = [
-    {
-      href: `/${locale}/actions`,
-      label: t("action.nav.myWork"),
-      icon: <WrenchScrewdriverIcon className="h-5 w-5" />,
-    },
-    {
-      href: `/${locale}/learn`,
-      label: t("app.learn"),
-      icon: <BookOpenIcon className="h-5 w-5" />,
-    },
-    {
-      href: `/${locale}/profile`,
-      label: t("app.profile"),
-      icon: <IdentificationIcon className="h-5 w-5" />,
-    },
-  ];
-
   const returnedContextProps = selected
     ? {
         action: selected,

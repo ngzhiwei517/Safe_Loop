@@ -259,7 +259,8 @@ describe("ReportDetail", () => {
     expect(screen.queryByRole("button", { name: en["action.reject"] })).toBeNull();
     expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))
       .toBe(`/${defaultLocale}/reports`);
-    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
+    expect(screen.getByRole("link", { name: en["app.profile"] }).getAttribute("href"))
+      .toBe(`/${defaultLocale}/profile`);
   });
 
   it("keeps reporter navigation available when the report cannot load", async () => {
