@@ -134,6 +134,7 @@ describe("ReviewQueue", () => {
     expect(screen.queryByRole("link", { name: en["review.nav.actions"] })).toBeNull();
     expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
     expect(screen.queryByRole("link", { name: en["app.learn"] })).toBeNull();
+    expect(screen.getByRole("button", { name: en["app.signOut"] })).toBeTruthy();
   });
 
   it("offers every generated status and refetches after filtering", async () => {

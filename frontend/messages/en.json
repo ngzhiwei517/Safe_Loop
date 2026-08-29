@@ -11,6 +11,8 @@
   "term.hazard": "hazard",
   "app.name": "SafeLoop AI",
   "app.signIn": "Sign in",
+  "app.signOut": "Sign out",
+  "app.signingOut": "Signing out…",
   "app.email": "Email",
   "app.password": "Password",
   "app.home": "Home",

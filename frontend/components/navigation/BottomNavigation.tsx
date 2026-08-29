@@ -3,6 +3,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { SignOutButton } from "../auth/SignOutButton";
+
 export type NavigationItem = {
   href: string;
   label: string;
@@ -31,6 +33,7 @@ export function BottomNavigation({
           <span>{item.label}</span>
         </Link>
       ))}
+      <SignOutButton />
     </nav>
   );
 }

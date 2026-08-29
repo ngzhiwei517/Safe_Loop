@@ -26,6 +26,7 @@ import {
   type VerificationRecord,
 } from "../../lib/reports";
 import { createClient } from "../../lib/supabase/browser";
+import { SignOutButton } from "../auth/SignOutButton";
 import { Banner } from "../ui/Banner";
 import {
   DestructiveButton,
@@ -247,14 +248,17 @@ export function VerificationPage({
             </p>
           )}
         </div>
-        <LanguageSwitch
-          current={locale}
-          label={t("app.language")}
-          options={[
-            { value: locales[0], label: t("app.languageEnglish") },
-            { value: locales[1], label: t("app.languageChinese") },
-          ]}
-        />
+        <div className="flex items-center gap-2">
+          <LanguageSwitch
+            current={locale}
+            label={t("app.language")}
+            options={[
+              { value: locales[0], label: t("app.languageEnglish") },
+              { value: locales[1], label: t("app.languageChinese") },
+            ]}
+          />
+          <SignOutButton variant="icon" />
+        </div>
       </header>
 
       <div className="space-y-4">

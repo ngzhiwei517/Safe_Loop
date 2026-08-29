@@ -164,6 +164,7 @@ describe("VerificationPage", () => {
     expect(
       screen.getByRole("img", { name: en["verification.evidence.photoAlt"] }),
     ).toBeTruthy();
+    expect(screen.getByRole("button", { name: en["app.signOut"] })).toBeTruthy();
   });
 
   it("rejects a generic send-back reason and submits the specific deficiency", async () => {

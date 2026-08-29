@@ -11,6 +11,8 @@
   "term.hazard": "安全隐患",
   "app.name": "SafeLoop AI",
   "app.signIn": "登录",
+  "app.signOut": "退出登录",
+  "app.signingOut": "正在退出…",
   "app.email": "电子邮箱",
   "app.password": "密码",
   "app.home": "首页",
