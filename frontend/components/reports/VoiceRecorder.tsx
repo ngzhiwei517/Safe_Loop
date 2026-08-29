@@ -10,6 +10,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import { normalizedAudioMimeType, type AudioMimeType } from "../../lib/media";
+import type { LiveRecordingSession, LiveTranscriptDraft } from "../../lib/live-transcription";
 
 const recordingCapSeconds = 120;
 const recorderMimeCandidates = [
@@ -39,10 +40,11 @@ function audioFileName(mimeType: AudioMimeType): string {
 
 type VoiceRecorderProps = {
   value: File | null;
-  onChange: (file: File | null) => void;
+  onChange: (file: File | null, liveResult?: Promise<LiveTranscriptDraft | null>) => void;
+  startLive?: (stream: MediaStream) => Promise<LiveRecordingSession | null>;
 };
 
-export function VoiceRecorder({ value, onChange }: VoiceRecorderProps) {
+export function VoiceRecorder({ value, onChange, startLive }: VoiceRecorderProps) {
   const t = useTranslations();
   const [supported, setSupported] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -53,6 +55,8 @@ export function VoiceRecorder({ value, onChange }: VoiceRecorderProps) {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
+  const liveSessionRef = useRef<LiveRecordingSession | null>(null);
+  const liveResultRef = useRef<Promise<LiveTranscriptDraft | null> | undefined>(undefined);
 
   useEffect(() => {
     setSupported(
@@ -75,12 +79,17 @@ export function VoiceRecorder({ value, onChange }: VoiceRecorderProps) {
     if (timerRef.current !== null) window.clearInterval(timerRef.current);
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     streamRef.current?.getTracks().forEach((track) => track.stop());
+    liveSessionRef.current?.cancel();
   }, []);
 
   function stopRecording() {
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
+    }
+    if (liveSessionRef.current) {
+      liveResultRef.current = liveSessionRef.current.finish();
+      liveSessionRef.current = null;
     }
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }
@@ -103,6 +112,12 @@ export function VoiceRecorder({ value, onChange }: VoiceRecorderProps) {
       }
 
       onChange(null);
+      try {
+        liveSessionRef.current = await startLive?.(stream) ?? null;
+      } catch {
+        liveSessionRef.current = null;
+      }
+      liveResultRef.current = undefined;
       chunksRef.current = [];
       streamRef.current = stream;
       recorderRef.current = recorder;
@@ -118,10 +133,13 @@ export function VoiceRecorder({ value, onChange }: VoiceRecorderProps) {
         setRecording(false);
         if (chunks.length === 0) return;
         const blob = new Blob(chunks, { type: normalizedMimeType });
-        onChange(new File([blob], audioFileName(normalizedMimeType), {
-          type: normalizedMimeType,
-          lastModified: Date.now(),
-        }));
+        onChange(
+          new File([blob], audioFileName(normalizedMimeType), {
+            type: normalizedMimeType,
+            lastModified: Date.now(),
+          }),
+          liveResultRef.current,
+        );
       };
 
       recorder.start(1000);

@@ -120,8 +120,10 @@ field remains available, and report, clarification, and completion-note submissi
 with typed text. The server records the failed attempt for the dashboard; no report text is
 created from a failed transcript and no report is lost.
 
-1. Confirm Vertex AI and the configured model are available in `asia-southeast1`; never route
-   site audio through the global Generative Language endpoint.
+1. Confirm the synchronous Vertex model is available in `asia-southeast1`. When
+   `LIVE_TRANSCRIPTION_ENABLED=true`, also check the explicitly approved global Agent Platform
+   preview `gemini-3.5-transcribe-live-preview`. This is a documented residency exception, not
+   permission to use the public Generative Language endpoint.
 2. Check `/health/deep`, `provider_unavailable`/`circuit_open` responses, quota, and the
    dashboard failure rate by locale. Do not enable the stub in production.
 3. Tell users to type in the still-editable field. Do not retry or submit on their behalf.
@@ -133,12 +135,19 @@ equivalent project and region configuration:
 
 ```bash
 python -m app.ai.eval_asr
+python -m app.ai.eval_asr --provider live
 ```
 
 Record the model version and per-language CER/WER. Investigate clean Mandarin CER above 15%
 or noisy Mandarin CER above 30%; compare English, Mandarin, code-switched, and noisy fixtures
 before promoting the model. `python -m app.ai.eval_asr --provider stub` checks only harness
 plumbing and is not an accuracy result.
+
+The Live preview currently requires both `cmn-Hans-CN` and `en-GB` in `language_codes` to
+preserve SafeLoop code-switching. It may omit a language code and confidence; SafeLoop then
+infers `cmn-Hans-CN`, `en`, or `mul` from the returned script and stores confidence as null.
+Never invent a numerical confidence value. If the WebSocket fails, the browser retries the
+stored clip through synchronous `/transcribe`; typing remains the final fallback.
 
 ## First-response checks
 

@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     vertex_location: str = DEFAULT_VERTEX_LOCATION
     vertex_model: str = "gemini-3.5-flash"
     vertex_transcription_model: str = "gemini-3.5-flash"
+    vertex_live_transcription_model: str = "gemini-3.5-transcribe-live-preview"
+    vertex_live_transcription_location: str = "global"
+    live_transcription_enabled: bool = False
+    live_transcription_ticket_ttl_seconds: int = Field(default=45, ge=10, le=300)
     vertex_embedding_model: str = "gemini-embedding-001"
     vertex_max_output_tokens: int = Field(default=4096, ge=256)
     vertex_input_cost_per_million_usd: float = Field(default=1.65, ge=0.0)

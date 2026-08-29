@@ -6,6 +6,11 @@ import { useTranslations } from "next-intl";
 import type { Locale } from "../../lib/locales";
 import { mediaPhase, uploadReportAudio, type MediaPhase } from "../../lib/media";
 import { transcribeAudio } from "../../lib/transcription";
+import {
+  commitLiveTranscript,
+  startLiveTranscription,
+  type LiveTranscriptDraft,
+} from "../../lib/live-transcription";
 import { createClient } from "../../lib/supabase/browser";
 import { Banner } from "../ui/Banner";
 import { Field } from "../ui/Field";
@@ -46,15 +51,20 @@ export function VoiceConfirmedTextarea({
   const [state, setState] = useState<State>(null);
   const [detectedLocale, setDetectedLocale] = useState<string | null>(null);
   const [hiddenAfterFailure, setHiddenAfterFailure] = useState(false);
+  const [interimText, setInterimText] = useState("");
   const runRef = useRef(0);
 
-  async function handleRecording(file: File | null) {
+  async function handleRecording(
+    file: File | null,
+    liveResult?: Promise<LiveTranscriptDraft | null>,
+  ) {
     const run = runRef.current + 1;
     runRef.current = run;
     setAudio(file);
     onTranscriptIdChange(null);
     onMediaIdChange?.(null);
     setDetectedLocale(null);
+    setInterimText("");
     setState(file ? "processing" : null);
     onProcessingChange?.(Boolean(file));
     if (!file) return;
@@ -76,11 +86,29 @@ export function VoiceConfirmedTextarea({
       });
       if (runRef.current !== run) return;
       onMediaIdChange?.(media.id);
-      const transcript = await transcribeAudio(
-        media.id,
-        locale === "zh-CN" ? "zh-CN" : "en-SG",
-        session.access_token,
-      );
+      const live = await liveResult;
+      let transcript;
+      if (live) {
+        try {
+          transcript = await commitLiveTranscript(
+            live.sessionId,
+            media.id,
+            session.access_token,
+          );
+        } catch {
+          transcript = await transcribeAudio(
+            media.id,
+            locale === "zh-CN" ? "zh-CN" : "en-SG",
+            session.access_token,
+          );
+        }
+      } else {
+        transcript = await transcribeAudio(
+          media.id,
+          locale === "zh-CN" ? "zh-CN" : "en-SG",
+          session.access_token,
+        );
+      }
       if (runRef.current !== run) return;
       setDetectedLocale(transcript.detected_locale);
       if (!transcript.meets_confidence_threshold) {
@@ -114,7 +142,29 @@ export function VoiceConfirmedTextarea({
         onChange={(event) => onChange(event.target.value)}
       />
       {!hiddenAfterFailure && (
-        <VoiceRecorder value={audio} onChange={(file) => void handleRecording(file)} />
+        <VoiceRecorder
+          value={audio}
+          onChange={(file, liveResult) => void handleRecording(file, liveResult)}
+          startLive={async (stream) => {
+            const client = createClient();
+            const { data: { session } } = await client.auth.getSession();
+            if (!session) return null;
+            return startLiveTranscription({
+              stream,
+              accessToken: session.access_token,
+              hintLocale: locale === "zh-CN" ? "zh-CN" : "en-SG",
+              onInterim: setInterimText,
+            });
+          }}
+        />
+      )}
+      {interimText && state === null && (
+        <div className="rounded-control border border-border bg-surface px-4 py-3" aria-live="polite">
+          <p className="text-xs font-bold uppercase tracking-wide text-inkMuted">
+            {t("report.voice.liveInterim")}
+          </p>
+          <p className="mt-1 text-sm text-ink">{interimText}</p>
+        </div>
       )}
       {state && state !== "processing" && (
         <Banner

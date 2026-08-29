@@ -17,6 +17,15 @@ character and word error rates. For this small synthetic baseline, investigate c
 CER above 15% or noisy Mandarin CER above 30%; do not treat those thresholds as a production
 acceptance study.
 
+To compare the explicitly approved global Gemini 3.5 Transcribe Live preview, run:
+
+```sh
+python -m app.ai.eval_asr --provider live
+```
+
+The live harness paces each fixture as 16 kHz microphone PCM and is intentionally slower than
+the synchronous evaluation.
+
 To check only the scoring and fixture plumbing without a network call:
 
 ```sh

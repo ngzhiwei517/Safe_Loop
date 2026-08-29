@@ -47,7 +47,7 @@ class Transcript(BaseModel):
 
     text: str = Field(min_length=1)
     detected_locale: str = Field(min_length=1, max_length=64)
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     duration_ms: int = Field(ge=0)
     provider: str = Field(min_length=1)
     model: str = Field(min_length=1)

@@ -131,7 +131,10 @@ async def post_transcribe(
         hint_locale=payload.hint_locale,
         transcript=result,
     )
-    usable = result.confidence >= get_settings().transcription_confidence_threshold
+    usable = (
+        result.confidence is not None
+        and result.confidence >= get_settings().transcription_confidence_threshold
+    )
     await persist_transcription_attempt(
         media,
         hint_locale=payload.hint_locale,

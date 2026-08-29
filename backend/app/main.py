@@ -18,6 +18,7 @@ from app.api.learning import router as learning_router
 from app.config import get_settings
 from app.api.reports import router as reports_router
 from app.api.transcription import router as transcription_router
+from app.api.transcription_live import router as transcription_live_router
 from app.db import close_pool
 from app.domain.transitions import TRANSITIONS
 from app.health import run_deep_health
@@ -75,6 +76,7 @@ app.include_router(learning_router)
 app.include_router(documents_router)
 app.include_router(metrics_router)
 app.include_router(transcription_router)
+app.include_router(transcription_live_router)
 
 
 @app.get("/health")

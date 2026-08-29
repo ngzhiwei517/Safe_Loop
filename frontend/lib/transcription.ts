@@ -4,7 +4,7 @@ export type TranscriptionResult = {
   transcript_id: string;
   text: string;
   detected_locale: string;
-  confidence: number;
+  confidence: number | null;
   duration_ms: number;
   provider: string;
   model: string;

@@ -10,7 +10,9 @@ from app.ai.transcription import (
     GeminiTranscription,
     GeminiTranscriptionConfig,
     StubTranscription,
+    TranscriptionProvider,
 )
+from app.ai.live_transcription import GeminiLiveFileTranscription, LiveTranscriptionConfig
 from app.ai.eval_asr.runner import evaluate, render_report
 from app.config import get_settings
 
@@ -23,18 +25,23 @@ def main() -> None:
     )
     parser.add_argument(
         "--provider",
-        choices=("vertex", "stub"),
+        choices=("vertex", "live", "stub"),
         default="vertex",
         help="Vertex is the quality evaluation; stub only checks harness plumbing.",
     )
     args = parser.parse_args()
-    provider = (
-        StubTranscription()
-        if args.provider == "stub"
-        else GeminiTranscription(
-            GeminiTranscriptionConfig.from_settings(get_settings())
+    settings = get_settings()
+    provider: TranscriptionProvider
+    if args.provider == "stub":
+        provider = StubTranscription()
+    elif args.provider == "live":
+        provider = GeminiLiveFileTranscription(
+            LiveTranscriptionConfig.from_settings(settings)
         )
-    )
+    else:
+        provider = GeminiTranscription(
+            GeminiTranscriptionConfig.from_settings(settings)
+        )
     print(render_report(asyncio.run(evaluate(provider))))
 
 

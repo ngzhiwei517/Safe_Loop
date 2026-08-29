@@ -64,6 +64,7 @@ def test_vendor_sdk_is_isolated_to_the_real_provider_module() -> None:
     approved_provider_modules = {
         Path(llm_provider.__file__),
         ai_root / "transcription.py",
+        ai_root / "live_transcription.py",
     }
     offenders = [
         path
