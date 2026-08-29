@@ -63,10 +63,10 @@ values (
   now() + interval '90 days'
 );
 insert into transcripts (
-  media_id, provider, model, hint_locale, text_raw, duration_ms,
+  media_id, report_id, provider, model, hint_locale, text_raw, duration_ms,
   provider_ref, latency_ms
 )
-select id, 'stub', 'stub-transcription', 'en-SG', 'verification transcript', 30000,
+select id, report_id, 'stub', 'stub-transcription', 'en-SG', 'verification transcript', 30000,
        'stub-asr-verification', 12
 from report_media
 where report_id = (select id from verify_report)

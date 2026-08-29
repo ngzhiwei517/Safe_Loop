@@ -1,10 +1,8 @@
 import { apiFetch } from "./api";
 import type { Locale } from "./locales";
 import {
-  uploadReportAudio,
   uploadReportPhoto,
   type MediaPhase,
-  type ReportAudioUpload,
   type ReportPhotoUpload,
 } from "./media";
 import { reportStatus, type ReportStatus } from "./stateMachine";
@@ -20,7 +18,6 @@ export type NewReportInput = {
   level_or_zone: string | null;
   grid_ref: string | null;
   is_confidential: boolean;
-  input_mode: "typed";
 };
 
 type CreatedReport = { id: string };
@@ -263,7 +260,7 @@ export async function fileReport(
   accessToken: string,
   photo?: ReportPhotoUpload,
   existingDraftId?: string,
-  audio?: ReportAudioUpload,
+  transcriptId?: string,
 ): Promise<SubmittedReport> {
   const created = existingDraftId
     ? await apiFetch<CreatedReport>(`/reports/${existingDraftId}`, accessToken, {
@@ -278,16 +275,13 @@ export async function fileReport(
       accessToken,
     });
   }
-  if (audio) {
-    await uploadReportAudio({
-      ...audio,
-      reportId: created.id,
-      accessToken,
-    });
-  }
   return apiFetch<SubmittedReport>(`/reports/${created.id}/transition`, accessToken, {
     method: "POST",
-    body: JSON.stringify({ target: reportStatus.submitted }),
+    body: JSON.stringify({
+      target: reportStatus.submitted,
+      confirmed_text: input.description_original,
+      transcript_id: transcriptId,
+    }),
   });
 }
 

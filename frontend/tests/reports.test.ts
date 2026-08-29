@@ -23,7 +23,6 @@ const input: NewReportInput = {
   level_or_zone: null,
   grid_ref: null,
   is_confidential: false,
-  input_mode: "typed",
 };
 
 describe("fileReport", () => {
@@ -53,7 +52,10 @@ describe("fileReport", () => {
       "test-token",
       {
         method: "POST",
-        body: JSON.stringify({ target: reportStatus.submitted }),
+        body: JSON.stringify({
+          target: reportStatus.submitted,
+          confirmed_text: input.description_original,
+        }),
       },
     );
   });
@@ -96,16 +98,9 @@ describe("fileReport", () => {
     );
   });
 
-  it("uploads and registers a voice clip before submission", async () => {
-    const upload = vi.fn(async () => ({ data: {}, error: null }));
-    const from = vi.fn(() => ({
-      upload,
-      remove: vi.fn(async () => ({ data: [], error: null })),
-    }));
-    const client = { storage: { from } } as unknown as SupabaseClient;
+  it("submits the confirmed text with its server-issued transcript id", async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce({ id: "report-id" })
-      .mockResolvedValueOnce({ id: "audio-id" })
       .mockResolvedValueOnce({
         id: "report-id",
         human_ref: "SL-2026-00001",
@@ -117,17 +112,22 @@ describe("fileReport", () => {
       "test-token",
       undefined,
       undefined,
-      {
-        client,
-        file: new File(["voice"], "report.webm", { type: "audio/webm" }),
-        userId: "reporter-id",
-      },
+      "transcript-id",
     );
 
-    expect(from).toHaveBeenCalledWith("report-audio");
-    expect(vi.mocked(apiFetch).mock.calls[1][0]).toBe("/reports/report-id/media");
-    expect(vi.mocked(apiFetch).mock.calls[2][0])
-      .toBe("/reports/report-id/transition");
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/reports/report-id/transition",
+      "test-token",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          target: reportStatus.submitted,
+          confirmed_text: "Loose edge protection",
+          transcript_id: "transcript-id",
+        }),
+      },
+    );
   });
 
   it("passes every queue filter through one keyset-paginated request", async () => {

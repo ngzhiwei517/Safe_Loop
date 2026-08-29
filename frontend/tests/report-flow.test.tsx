@@ -10,6 +10,8 @@ import zh from "../messages/zh-CN.json";
 import { getAlert, raiseAlert } from "../lib/alerts";
 import { defaultLocale, locales } from "../lib/locales";
 import { createReportDraft, fileReport } from "../lib/reports";
+import { uploadReportAudio } from "../lib/media";
+import { transcribeAudio } from "../lib/transcription";
 import { reportStatus } from "../lib/stateMachine";
 
 const navigation = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn() }));
@@ -30,6 +32,23 @@ vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 vi.mock("../lib/reports", () => ({
   createReportDraft: vi.fn(),
   fileReport: vi.fn(),
+}));
+vi.mock("../lib/media", () => ({
+  uploadReportAudio: vi.fn(),
+}));
+vi.mock("../lib/transcription", () => ({
+  transcribeAudio: vi.fn(),
+}));
+vi.mock("../components/reports/VoiceRecorder", () => ({
+  VoiceRecorder: ({ onChange }: { onChange: (file: File | null) => void }) => (
+    <button
+      type="button"
+      aria-label="mock voice recording"
+      onClick={() => onChange(new File(["voice"], "report.webm", { type: "audio/webm" }))}
+    >
+      Record
+    </button>
+  ),
 }));
 vi.mock("../lib/alerts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/alerts")>();
@@ -88,6 +107,8 @@ describe("ReportFlow", () => {
     navigation.push.mockReset();
     vi.mocked(createReportDraft).mockReset();
     vi.mocked(fileReport).mockReset();
+    vi.mocked(uploadReportAudio).mockReset();
+    vi.mocked(transcribeAudio).mockReset();
     vi.mocked(getAlert).mockReset();
     vi.mocked(raiseAlert).mockReset();
     Object.defineProperty(URL, "createObjectURL", {
@@ -114,7 +135,6 @@ describe("ReportFlow", () => {
     expect(fileReport).toHaveBeenCalledWith(
       expect.objectContaining({
         description_original: "Loose edge protection",
-        input_mode: "typed",
       }),
       "test-token",
       undefined,
@@ -167,6 +187,142 @@ describe("ReportFlow", () => {
     expect((screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])) as HTMLTextAreaElement).value).toBe("Keep this text");
   });
 
+  it("puts a Mandarin transcript into the editable field and submits the correction", async () => {
+    vi.mocked(createReportDraft).mockResolvedValue({ id: "draft-id" });
+    vi.mocked(uploadReportAudio).mockResolvedValue({ id: "audio-id" } as never);
+    vi.mocked(transcribeAudio).mockResolvedValue({
+      transcript_id: "transcript-id",
+      text: "六楼边缘没有护栏",
+      detected_locale: "zh-CN",
+      confidence: 0.94,
+      duration_ms: 30000,
+      provider: "stub",
+      model: "stub-v1",
+      provider_ref: "stub-ref",
+      latency_ms: 1,
+      meets_confidence_threshold: true,
+    });
+    vi.mocked(fileReport).mockResolvedValue({
+      id: "draft-id",
+      human_ref: "SL-2026-00001",
+      status: reportStatus.submitted,
+    });
+    renderFlow();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "mock voice recording" }));
+    const description = screen.getByLabelText(
+      requiredLabel(en["report.new.whatHappened"]),
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(description.value).toBe("六楼边缘没有护栏"));
+    expect(document.activeElement).toBe(description);
+    const transcriptBanner = screen
+      .getByText(en["report.voice.transcription.ready.title"])
+      .closest("aside");
+    expect(transcriptBanner?.textContent).toContain("zh-CN");
+    expect(transcriptBanner?.textContent).toContain("check it");
+
+    await user.clear(description);
+    await user.type(description, "六楼边缘没有防护栏");
+    await user.type(
+      screen.getByLabelText(requiredLabel(en["report.new.location"])),
+      "Level 6",
+    );
+    await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
+    await user.click(screen.getByRole("button", { name: en["report.new.dangerNo"] }));
+    await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
+    await user.type(
+      screen.getByLabelText(requiredLabel(en["report.new.activity"])),
+      "Material delivery",
+    );
+    await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
+
+    await waitFor(() => expect(fileReport).toHaveBeenCalledWith(
+      expect.objectContaining({ description_original: "六楼边缘没有防护栏" }),
+      "test-token",
+      undefined,
+      "draft-id",
+      "transcript-id",
+    ));
+  });
+
+  it("keeps filing available with typed text after transcription fails", async () => {
+    vi.mocked(createReportDraft).mockResolvedValue({ id: "draft-id" });
+    vi.mocked(uploadReportAudio).mockResolvedValue({ id: "audio-id" } as never);
+    vi.mocked(transcribeAudio).mockRejectedValue(new Error("provider unavailable"));
+    vi.mocked(fileReport).mockResolvedValue({
+      id: "draft-id",
+      human_ref: "SL-2026-00001",
+      status: reportStatus.submitted,
+    });
+    renderFlow();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "mock voice recording" }));
+    await screen.findByText(en["report.voice.transcription.failed.title"]);
+    const description = screen.getByLabelText(
+      requiredLabel(en["report.new.whatHappened"]),
+    ) as HTMLTextAreaElement;
+    expect(description.value).toBe("");
+    expect(document.activeElement).toBe(description);
+
+    await user.type(description, "Typed fallback after voice failed");
+    await user.type(
+      screen.getByLabelText(requiredLabel(en["report.new.location"])),
+      "Level 6",
+    );
+    await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
+    await user.click(screen.getByRole("button", { name: en["report.new.dangerNo"] }));
+    await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
+    await user.type(
+      screen.getByLabelText(requiredLabel(en["report.new.activity"])),
+      "Material delivery",
+    );
+    await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
+
+    await waitFor(() => expect(fileReport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description_original: "Typed fallback after voice failed",
+      }),
+      "test-token",
+      undefined,
+      "draft-id",
+      undefined,
+    ));
+  });
+
+  it("leaves the editable field ready for typing after a low-confidence transcript", async () => {
+    vi.mocked(createReportDraft).mockResolvedValue({ id: "draft-id" });
+    vi.mocked(uploadReportAudio).mockResolvedValue({ id: "audio-id" } as never);
+    vi.mocked(transcribeAudio).mockResolvedValue({
+      transcript_id: "transcript-id",
+      text: "uncertain partial text",
+      detected_locale: "mul",
+      confidence: 0.3,
+      duration_ms: 30000,
+      provider: "stub",
+      model: "stub-v1",
+      provider_ref: "stub-ref",
+      latency_ms: 1,
+      meets_confidence_threshold: false,
+    });
+    renderFlow();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "mock voice recording" }),
+    );
+    await screen.findByText(en["report.voice.transcription.lowConfidence.title"]);
+    const description = screen.getByLabelText(
+      requiredLabel(en["report.new.whatHappened"]),
+    ) as HTMLTextAreaElement;
+    expect(description.value).toBe("");
+    expect(document.activeElement).toBe(description);
+    expect(
+      screen.getByText(en["report.voice.transcription.lowConfidence.title"])
+        .closest("aside")?.textContent,
+    ).toContain("mul");
+  });
+
   it("names every missing required field before submitting", async () => {
     renderFlow();
     const user = await reachReview("Loose edge protection");
@@ -203,7 +359,6 @@ describe("ReportFlow", () => {
       expect.objectContaining({
         description_original: "Loose edge protection",
         location_text: "Level 6",
-        input_mode: "typed",
       }),
       "test-token",
     );

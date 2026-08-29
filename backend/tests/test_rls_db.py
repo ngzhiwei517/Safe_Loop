@@ -193,17 +193,19 @@ async def seed_matrix(conn: asyncpg.Connection[asyncpg.Record]) -> MatrixRows:
     )
     own_transcript = await conn.fetchval(
         """
-        insert into public.transcripts (media_id, provider, model, text_raw)
-        values ($1, 'stub', 'stub-transcription', 'own transcript') returning id
+        insert into public.transcripts (media_id, report_id, provider, model, text_raw)
+        values ($1, $2, 'stub', 'stub-transcription', 'own transcript') returning id
         """,
         own_media,
+        own_report,
     )
     other_transcript = await conn.fetchval(
         """
-        insert into public.transcripts (media_id, provider, model, text_raw)
-        values ($1, 'stub', 'stub-transcription', 'other transcript') returning id
+        insert into public.transcripts (media_id, report_id, provider, model, text_raw)
+        values ($1, $2, 'stub', 'stub-transcription', 'other transcript') returning id
         """,
         other_media,
+        other_report,
     )
 
     own_clarification = await conn.fetchval(

@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     report_submission_rate_limit_per_minute: int = Field(default=10, ge=1, le=300)
     document_upload_rate_limit_per_minute: int = Field(default=5, ge=1, le=100)
     transcription_rate_limit_per_minute: int = Field(default=10, ge=1, le=100)
+    transcription_confidence_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
     deep_health_timeout_seconds: float = Field(default=5.0, gt=0.0, le=30.0)
     slow_request_ms: int = Field(default=300, ge=1)
     log_level: str = "INFO"

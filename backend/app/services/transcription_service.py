@@ -30,6 +30,7 @@ class TranscriptionServiceError(Exception):
 @dataclass(frozen=True)
 class AudioMedia:
     id: UUID
+    report_id: UUID
     storage_path: str
     mime_type: str
 
@@ -39,7 +40,7 @@ async def get_audio_media(media_id: UUID, actor: Actor) -> AudioMedia:
     async with connection() as conn:
         row = await conn.fetchrow(
             """
-            select media.id, media.storage_path, media.mime_type,
+            select media.id, media.report_id, media.storage_path, media.mime_type,
                    media.phase::text, report.reporter_id,
                    exists (
                      select 1 from report_assignments as assignment
@@ -84,6 +85,7 @@ async def get_audio_media(media_id: UUID, actor: Actor) -> AudioMedia:
         )
     return AudioMedia(
         id=row["id"],
+        report_id=row["report_id"],
         storage_path=row["storage_path"],
         mime_type=mime_type,
     )
@@ -145,6 +147,7 @@ async def download_audio(
 async def persist_transcript(
     media_id: UUID,
     *,
+    report_id: UUID,
     hint_locale: str,
     transcript: Transcript,
 ) -> asyncpg.Record:
@@ -153,13 +156,14 @@ async def persist_transcript(
         row = await conn.fetchrow(
             """
             insert into transcripts (
-              media_id, provider, model, hint_locale, detected_locale,
+              media_id, report_id, provider, model, hint_locale, detected_locale,
               text_raw, confidence, duration_ms, provider_ref, latency_ms
             )
-            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             returning *
             """,
             media_id,
+            report_id,
             transcript.provider,
             transcript.model,
             hint_locale,

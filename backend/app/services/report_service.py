@@ -57,6 +57,15 @@ class ReportDraftError(Exception):
         self.message = message
 
 
+class ReportSubmissionError(Exception):
+    """Carry stable confirmation errors from the atomic submit boundary."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 @dataclass(frozen=True)
 class ReportPage:
     """Return one stable queue page and the cursor for the following page."""
@@ -366,7 +375,6 @@ async def create_report(
     level_or_zone: str | None = None,
     grid_ref: str | None = None,
     is_confidential: bool = False,
-    input_mode: InputMode = InputMode.TYPED,
 ) -> UUID:
     """Create a draft; the database trigger assigns its human reference."""
     async with connection() as conn:
@@ -376,9 +384,9 @@ async def create_report(
                 INSERT INTO reports (
                   reporter_id, description_original, lang_original, urgency,
                   location_text, activity, level_or_zone, grid_ref,
-                  is_confidential, input_mode
+                  is_confidential
                 )
-                VALUES ($1, $2, $3, $4::urgency, $5, $6, $7, $8, $9, $10::input_mode)
+                VALUES ($1, $2, $3, $4::urgency, $5, $6, $7, $8, $9)
                 RETURNING id
                 """,
                 reporter_id,
@@ -390,7 +398,6 @@ async def create_report(
                 level_or_zone,
                 grid_ref,
                 is_confidential,
-                input_mode.value,
             )
             await conn.execute(
                 """
@@ -416,7 +423,6 @@ async def update_draft_report(
     level_or_zone: str | None,
     grid_ref: str | None,
     is_confidential: bool,
-    input_mode: InputMode,
 ) -> asyncpg.Record:
     """Finish an urgent draft without creating a second path for status writes."""
     async with connection() as conn:
@@ -440,8 +446,7 @@ async def update_draft_report(
                     activity = $5,
                     level_or_zone = $6,
                     grid_ref = $7,
-                    is_confidential = $8,
-                    input_mode = $9::input_mode
+                    is_confidential = $8
                 where id = $1
                 returning *
                 """,
@@ -453,7 +458,6 @@ async def update_draft_report(
                 level_or_zone,
                 grid_ref,
                 is_confidential,
-                input_mode.value,
             )
             if updated is None:
                 raise RuntimeError("draft disappeared while updating")
@@ -595,6 +599,102 @@ async def _transition_connection(
         return
     async with connection() as conn:
         yield conn
+
+
+def input_mode_for_submission(
+    confirmed_text: str,
+    raw_transcript: str | None,
+) -> InputMode:
+    """Classify input from server-owned transcript evidence, never a client flag."""
+    if raw_transcript is None:
+        return InputMode.TYPED
+    if confirmed_text == raw_transcript:
+        return InputMode.VOICE
+    return InputMode.VOICE_EDITED
+
+
+async def submit_report(
+    report_id: UUID,
+    actor: Actor,
+    *,
+    confirmed_text: str,
+    transcript_id: UUID | None,
+) -> asyncpg.Record:
+    """Persist only human-confirmed text and atomically submit the draft."""
+    confirmed = confirmed_text.strip()
+    if not confirmed:
+        raise ReportSubmissionError(
+            "confirmed_text_required",
+            "confirmed report text is required",
+        )
+    if actor.actor_type is not ActorType.HUMAN or actor.profile_id is None:
+        raise ReportSubmissionError(
+            "submission_actor_forbidden",
+            "report submission requires a human profile",
+        )
+
+    async with connection() as conn:
+        async with conn.transaction():
+            report = await conn.fetchrow(
+                "select reporter_id, status::text from reports where id = $1 for update",
+                report_id,
+            )
+            if report is None:
+                raise ReportSubmissionError(
+                    "report_not_found", "report does not exist"
+                )
+            if report["reporter_id"] != actor.profile_id:
+                raise ReportSubmissionError(
+                    "submission_forbidden", "draft belongs to another reporter"
+                )
+            if report["status"] != ReportStatus.DRAFT.value:
+                raise ReportSubmissionError(
+                    "report_not_submittable", "only a draft can be submitted"
+                )
+
+            raw_transcript: str | None = None
+            if transcript_id is not None:
+                raw_transcript = await conn.fetchval(
+                    """
+                    select text_raw from transcripts
+                    where id = $1 and report_id = $2
+                    """,
+                    transcript_id,
+                    report_id,
+                )
+                if raw_transcript is None:
+                    raise ReportSubmissionError(
+                        "transcript_not_found",
+                        "transcript does not belong to this report",
+                    )
+
+            input_mode = input_mode_for_submission(
+                confirmed,
+                raw_transcript,
+            )
+            await conn.execute(
+                """
+                update reports
+                set description_original = $2,
+                    input_mode = $3::input_mode
+                where id = $1
+                """,
+                report_id,
+                confirmed,
+                input_mode.value,
+            )
+            return await transition_report(
+                report_id,
+                ReportStatus.SUBMITTED,
+                actor,
+                metadata={
+                    "input_mode": input_mode.value,
+                    "transcript_id": (
+                        str(transcript_id) if transcript_id is not None else None
+                    ),
+                },
+                transaction_connection=conn,
+            )
 
 
 async def transition_report(

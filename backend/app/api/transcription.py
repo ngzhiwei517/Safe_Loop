@@ -57,7 +57,13 @@ def _provider_failure(
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content=jsonable_encoder(
-            {"ok": False, "failure": failure.model_dump(mode="json")}
+            {
+                "detail": {
+                    "code": failure.code,
+                    "message": "transcription is temporarily unavailable",
+                },
+                "failure": failure.model_dump(mode="json"),
+            }
         ),
     )
 
@@ -105,12 +111,22 @@ async def post_transcribe(
     if isinstance(result, TranscriptionFailure):
         return _provider_failure(result)
 
-    await persist_transcript(
+    stored = await persist_transcript(
         payload.media_id,
+        report_id=media.report_id,
         hint_locale=payload.hint_locale,
         transcript=result,
     )
     return cast(
         dict[str, object],
-        jsonable_encoder(cast(Transcript, result).model_dump(mode="json")),
+        jsonable_encoder(
+            {
+                **cast(Transcript, result).model_dump(mode="json"),
+                "transcript_id": stored["id"],
+                "meets_confidence_threshold": (
+                    result.confidence
+                    >= get_settings().transcription_confidence_threshold
+                ),
+            }
+        ),
     )

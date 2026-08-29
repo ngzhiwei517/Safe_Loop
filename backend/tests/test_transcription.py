@@ -35,6 +35,7 @@ from app.services.transcription_service import AudioMedia, download_audio
 
 REPORTER_ID = UUID("00000000-0000-0000-0000-000000000001")
 MEDIA_ID = UUID("70000000-0000-0000-0000-000000000001")
+REPORT_ID = UUID("10000000-0000-0000-0000-000000000001")
 
 
 @dataclass
@@ -250,7 +251,12 @@ def test_private_audio_download_uses_service_key_without_network(
         requests.append(request)
         return httpx.Response(200, content=b"stored-audio")
 
-    media = AudioMedia(MEDIA_ID, f"{REPORTER_ID}/report/audio.webm", "audio/webm")
+    media = AudioMedia(
+        MEDIA_ID,
+        REPORT_ID,
+        f"{REPORTER_ID}/report/audio.webm",
+        "audio/webm",
+    )
 
     async def exercise() -> bytes:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -271,7 +277,7 @@ def test_transcribe_endpoint_rate_limits_persists_success_and_returns_transcript
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
-    media = AudioMedia(MEDIA_ID, "owner/report/audio.webm", "audio/webm")
+    media = AudioMedia(MEDIA_ID, REPORT_ID, "owner/report/audio.webm", "audio/webm")
 
     async def enforce(**values: object) -> None:
         calls.append(f"limit:{values['scope']}:{values['error_code']}")
@@ -305,6 +311,8 @@ def test_transcribe_endpoint_rate_limits_persists_success_and_returns_transcript
     assert isinstance(result, dict)
     assert result["provider"] == "stub"
     assert result["detected_locale"] == "zh-CN"
+    assert result["transcript_id"] == "transcript"
+    assert result["meets_confidence_threshold"] is True
     assert calls == [
         "limit:transcription:transcription_rate_limited",
         "media",
@@ -316,7 +324,7 @@ def test_transcribe_endpoint_rate_limits_persists_success_and_returns_transcript
 def test_provider_failure_is_typed_and_never_persisted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    media = AudioMedia(MEDIA_ID, "owner/report/audio.webm", "audio/webm")
+    media = AudioMedia(MEDIA_ID, REPORT_ID, "owner/report/audio.webm", "audio/webm")
 
     async def no_limit(**_: object) -> None:
         return None
@@ -358,7 +366,7 @@ def test_provider_failure_is_typed_and_never_persisted(
 
     assert isinstance(result, JSONResponse)
     assert result.status_code == 503
-    assert json.loads(result.body)["failure"]["code"] == "circuit_open"
+    assert json.loads(result.body)["detail"]["code"] == "circuit_open"
 
 
 def test_asr_corpus_and_error_metric_cover_requested_conditions() -> None:
