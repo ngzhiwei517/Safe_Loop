@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     vertex_project_id: str = ""
     vertex_location: str = DEFAULT_VERTEX_LOCATION
     vertex_model: str = "gemini-3.5-flash"
+    vertex_transcription_model: str = "gemini-3.5-flash"
     vertex_embedding_model: str = "gemini-embedding-001"
     vertex_max_output_tokens: int = Field(default=4096, ge=256)
     vertex_input_cost_per_million_usd: float = Field(default=1.65, ge=0.0)
@@ -48,6 +49,7 @@ class Settings(BaseSettings):
     quiz_rate_limit_per_minute: int = Field(default=30, ge=1, le=300)
     report_submission_rate_limit_per_minute: int = Field(default=10, ge=1, le=300)
     document_upload_rate_limit_per_minute: int = Field(default=5, ge=1, le=100)
+    transcription_rate_limit_per_minute: int = Field(default=10, ge=1, le=100)
     deep_health_timeout_seconds: float = Field(default=5.0, gt=0.0, le=30.0)
     slow_request_ms: int = Field(default=300, ge=1)
     log_level: str = "INFO"

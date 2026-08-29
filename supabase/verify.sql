@@ -62,11 +62,26 @@ values (
   'original',
   now() + interval '90 days'
 );
-insert into transcripts (media_id, provider, model, hint_locale, text_raw, duration_ms)
-select id, 'stub', 'stub-transcription', 'en-SG', 'verification transcript', 30000
+insert into transcripts (
+  media_id, provider, model, hint_locale, text_raw, duration_ms,
+  provider_ref, latency_ms
+)
+select id, 'stub', 'stub-transcription', 'en-SG', 'verification transcript', 30000,
+       'stub-asr-verification', 12
 from report_media
 where report_id = (select id from verify_report)
   and mime_type = 'audio/webm';
+insert into verify_results values (
+  'transcript_provider_metadata',
+  exists (
+    select 1 from transcripts
+    where media_id in (
+      select id from report_media where report_id = (select id from verify_report)
+    )
+      and provider_ref = 'stub-asr-verification'
+      and latency_ms = 12
+  )
+);
 do $$
 begin
   update transcripts set text_raw = 'changed'
