@@ -66,6 +66,10 @@ class ReportSubmissionError(Exception):
         self.message = message
 
 
+class TranscriptConfirmationError(Exception):
+    """Reject transcript evidence that is absent, reused, or belongs elsewhere."""
+
+
 @dataclass(frozen=True)
 class ReportPage:
     """Return one stable queue page and the cursor for the following page."""
@@ -613,6 +617,46 @@ def input_mode_for_submission(
     return InputMode.VOICE_EDITED
 
 
+async def confirm_transcript_text(
+    conn: PoolConnectionProxy[asyncpg.Record],
+    *,
+    report_id: UUID,
+    transcript_id: UUID | None,
+    confirmed_text: str,
+    context: str,
+    context_id: UUID,
+) -> InputMode:
+    """Classify and immutably link server-owned ASR evidence to editable text."""
+    if transcript_id is None:
+        return InputMode.TYPED
+    raw_transcript = await conn.fetchval(
+        "select text_raw from transcripts where id = $1 and report_id = $2",
+        transcript_id,
+        report_id,
+    )
+    if raw_transcript is None:
+        raise TranscriptConfirmationError("transcript does not belong to this report")
+    input_mode = input_mode_for_submission(confirmed_text, str(raw_transcript))
+    try:
+        await conn.execute(
+            """
+            insert into transcript_confirmations (
+              transcript_id, report_id, context, context_id,
+              confirmed_text, input_mode
+            ) values ($1, $2, $3, $4, $5, $6::input_mode)
+            """,
+            transcript_id,
+            report_id,
+            context,
+            context_id,
+            confirmed_text,
+            input_mode.value,
+        )
+    except asyncpg.UniqueViolationError as error:
+        raise TranscriptConfirmationError("transcript was already confirmed") from error
+    return input_mode
+
+
 async def submit_report(
     report_id: UUID,
     actor: Actor,
@@ -652,26 +696,19 @@ async def submit_report(
                     "report_not_submittable", "only a draft can be submitted"
                 )
 
-            raw_transcript: str | None = None
-            if transcript_id is not None:
-                raw_transcript = await conn.fetchval(
-                    """
-                    select text_raw from transcripts
-                    where id = $1 and report_id = $2
-                    """,
-                    transcript_id,
-                    report_id,
+            try:
+                input_mode = await confirm_transcript_text(
+                    conn,
+                    report_id=report_id,
+                    transcript_id=transcript_id,
+                    confirmed_text=confirmed,
+                    context="report_description",
+                    context_id=report_id,
                 )
-                if raw_transcript is None:
-                    raise ReportSubmissionError(
-                        "transcript_not_found",
-                        "transcript does not belong to this report",
-                    )
-
-            input_mode = input_mode_for_submission(
-                confirmed,
-                raw_transcript,
-            )
+            except TranscriptConfirmationError as error:
+                raise ReportSubmissionError(
+                    "transcript_not_found", str(error)
+                ) from error
             await conn.execute(
                 """
                 update reports

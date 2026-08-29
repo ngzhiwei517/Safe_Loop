@@ -9,7 +9,12 @@ import asyncpg
 
 from app.db import connection
 from app.domain.enums import ActionStatus, ActorType, MediaPhase, ReportStatus, Role
-from app.services.report_service import Actor, transition_report
+from app.services.report_service import (
+    Actor,
+    TranscriptConfirmationError,
+    confirm_transcript_text,
+    transition_report,
+)
 
 
 class ActionError(Exception):
@@ -65,6 +70,7 @@ async def submit_action(
     *,
     completed_note: str | None,
     media_ids: list[UUID],
+    transcript_id: UUID | None = None,
 ) -> ActionSubmissionResult:
     """Attach fresh proof, mark the action submitted, and transition in one commit."""
     clean_note, unique_media_ids = _submission_values(actor, completed_note, media_ids)
@@ -108,6 +114,26 @@ async def submit_action(
                     "action_not_submittable",
                     "corrective action is not accepting evidence",
                 )
+
+            if clean_note is None and transcript_id is not None:
+                raise ActionError(
+                    "action_transcript_not_found",
+                    "a transcript requires a confirmed completion note",
+                )
+            if clean_note is not None:
+                try:
+                    await confirm_transcript_text(
+                        conn,
+                        report_id=report_id,
+                        transcript_id=transcript_id,
+                        confirmed_text=clean_note,
+                        context="action_completion",
+                        context_id=action_id,
+                    )
+                except TranscriptConfirmationError as error:
+                    raise ActionError(
+                        "action_transcript_not_found", str(error)
+                    ) from error
 
             if unique_media_ids:
                 media_rows = await conn.fetch(

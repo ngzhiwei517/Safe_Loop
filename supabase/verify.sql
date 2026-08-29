@@ -63,10 +63,10 @@ values (
   now() + interval '90 days'
 );
 insert into transcripts (
-  media_id, report_id, provider, model, hint_locale, text_raw, duration_ms,
+  media_id, report_id, provider, model, hint_locale, detected_locale, text_raw, duration_ms,
   provider_ref, latency_ms
 )
-select id, report_id, 'stub', 'stub-transcription', 'en-SG', 'verification transcript', 30000,
+select id, report_id, 'stub', 'stub-transcription', 'en-SG', 'en-SG', 'verification transcript', 30000,
        'stub-asr-verification', 12
 from report_media
 where report_id = (select id from verify_report)
@@ -82,6 +82,33 @@ insert into verify_results values (
       and latency_ms = 12
   )
 );
+insert into transcription_attempts (
+  media_id, report_id, transcript_id, provider, model, hint_locale,
+  detected_locale, confidence, usable, latency_ms
+)
+select media.id, media.report_id, transcript.id, 'stub', 'stub-transcription',
+       'en-SG', 'en-SG', 0.9, true, 12
+from report_media media
+join transcripts transcript on transcript.media_id = media.id
+where media.report_id = (select id from verify_report)
+limit 1;
+insert into transcript_confirmations (
+  transcript_id, report_id, context, context_id, confirmed_text, input_mode
+)
+select transcript.id, media.report_id, 'report_description', media.report_id,
+       transcript.text_raw, 'voice'
+from report_media media
+join transcripts transcript on transcript.media_id = media.id
+where media.report_id = (select id from verify_report)
+limit 1;
+do $$
+begin
+  update transcription_attempts set usable = false
+  where report_id = (select id from verify_report);
+  insert into verify_results values ('voice_telemetry_append_only', false);
+exception when insufficient_privilege then
+  insert into verify_results values ('voice_telemetry_append_only', true);
+end $$;
 do $$
 begin
   update transcripts set text_raw = 'changed'

@@ -294,10 +294,16 @@ def test_transcribe_endpoint_rate_limits_persists_success_and_returns_transcript
         calls.append("persist")
         return {"id": "transcript"}
 
+    async def persist_attempt(*_: object, **__: object) -> None:
+        calls.append("attempt")
+
     monkeypatch.setattr(transcription_api, "enforce_rate_limit", enforce)
     monkeypatch.setattr(transcription_api, "get_audio_media", get_media)
     monkeypatch.setattr(transcription_api, "download_audio", download)
     monkeypatch.setattr(transcription_api, "persist_transcript", persist)
+    monkeypatch.setattr(
+        transcription_api, "persist_transcription_attempt", persist_attempt
+    )
     monkeypatch.setattr(
         transcription_api, "get_transcription_provider", StubTranscription
     )
@@ -318,10 +324,11 @@ def test_transcribe_endpoint_rate_limits_persists_success_and_returns_transcript
         "media",
         "download",
         "persist",
+        "attempt",
     ]
 
 
-def test_provider_failure_is_typed_and_never_persisted(
+def test_provider_failure_is_typed_and_only_attempt_telemetry_is_persisted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     media = AudioMedia(MEDIA_ID, REPORT_ID, "owner/report/audio.webm", "audio/webm")
@@ -348,6 +355,11 @@ def test_provider_failure_is_typed_and_never_persisted(
     async def unexpected_persist(*_: object, **__: object) -> None:
         raise AssertionError("failed transcription must not be persisted")
 
+    attempts: list[dict[str, object]] = []
+
+    async def persist_attempt(*_: object, **values: object) -> None:
+        attempts.append(values)
+
     monkeypatch.setattr(transcription_api, "enforce_rate_limit", no_limit)
     monkeypatch.setattr(transcription_api, "get_audio_media", get_media)
     monkeypatch.setattr(transcription_api, "download_audio", download)
@@ -356,6 +368,9 @@ def test_provider_failure_is_typed_and_never_persisted(
     )
     monkeypatch.setattr(
         transcription_api, "persist_transcript", unexpected_persist
+    )
+    monkeypatch.setattr(
+        transcription_api, "persist_transcription_attempt", persist_attempt
     )
     result = asyncio.run(
         transcription_api.post_transcribe(
@@ -367,6 +382,8 @@ def test_provider_failure_is_typed_and_never_persisted(
     assert isinstance(result, JSONResponse)
     assert result.status_code == 503
     assert json.loads(result.body)["detail"]["code"] == "circuit_open"
+    assert attempts[0]["usable"] is False
+    assert attempts[0]["transcript_id"] is None
 
 
 def test_asr_corpus_and_error_metric_cover_requested_conditions() -> None:

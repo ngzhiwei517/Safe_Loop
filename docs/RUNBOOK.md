@@ -112,6 +112,34 @@ remain independent and must continue to reach reviewers.
 Do not rerun a report that has already advanced; `run_intake` refuses statuses outside
 `submitted` and answer-complete `clarifying`.
 
+### Gemini speech transcription unavailable
+
+Voice is an optional input aid, never a filing dependency. When `/transcribe` returns a
+provider failure or the circuit is open, the current voice control hides, the editable text
+field remains available, and report, clarification, and completion-note submission continue
+with typed text. The server records the failed attempt for the dashboard; no report text is
+created from a failed transcript and no report is lost.
+
+1. Confirm Vertex AI and the configured model are available in `asia-southeast1`; never route
+   site audio through the global Generative Language endpoint.
+2. Check `/health/deep`, `provider_unavailable`/`circuit_open` responses, quota, and the
+   dashboard failure rate by locale. Do not enable the stub in production.
+3. Tell users to type in the still-editable field. Do not retry or submit on their behalf.
+4. After recovery, make one short English and one short Mandarin recording and confirm the
+   transcript appears in the editable field before declaring recovery.
+
+After any Gemini model-version change, run the non-CI corpus from `backend/` with production-
+equivalent project and region configuration:
+
+```bash
+python -m app.ai.eval_asr
+```
+
+Record the model version and per-language CER/WER. Investigate clean Mandarin CER above 15%
+or noisy Mandarin CER above 30%; compare English, Mandarin, code-switched, and noisy fixtures
+before promoting the model. `python -m app.ai.eval_asr --provider stub` checks only harness
+plumbing and is not an accuracy result.
+
 ## First-response checks
 
 | Symptom | First check |

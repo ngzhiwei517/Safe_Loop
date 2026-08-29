@@ -31,6 +31,18 @@ export type RepeatHazardCluster = {
   responsible_rework: ResponsibleRework[];
 };
 
+export type VoiceLocaleMetrics = {
+  detected_locale: string;
+  voice_report_count: number;
+  voice_unedited_count: number;
+  voice_edited_count: number;
+  transcript_accepted_unedited_rate: number | null;
+  median_edit_distance: number | null;
+  transcription_attempt_count: number;
+  transcription_failure_count: number;
+  transcription_failure_rate: number | null;
+};
+
 export type MetricsSummary = {
   open_by_status: Partial<Record<ReportStatus, number>>;
   overdue_count: number;
@@ -49,6 +61,15 @@ export type MetricsSummary = {
   questions_most_often_wrong: QuestionPerformance[];
   repeat_hazard_window_days: number;
   repeat_hazards: RepeatHazardCluster[];
+  report_count: number;
+  voice_report_count: number;
+  voice_report_share: number;
+  transcript_accepted_unedited_rate: number | null;
+  median_voice_edit_distance: number | null;
+  transcription_attempt_count: number;
+  transcription_failure_count: number;
+  transcription_failure_rate: number | null;
+  voice_by_detected_locale: VoiceLocaleMetrics[];
 };
 
 export function getMetricsSummary(accessToken: string): Promise<MetricsSummary> {

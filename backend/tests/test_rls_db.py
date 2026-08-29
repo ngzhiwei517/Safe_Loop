@@ -34,6 +34,8 @@ PROFILE_IDS: Final = (
 REPORT_CHILD_TABLES: Final = (
     "report_media",
     "transcripts",
+    "transcription_attempts",
+    "transcript_confirmations",
     "clarifications",
     "ai_drafts",
     "review_decisions",
@@ -65,6 +67,8 @@ EXPECTED_POLICIES: Final = {
     ("reports", "reports_select_visible", "SELECT"),
     ("report_media", "report_media_select_visible_report", "SELECT"),
     ("transcripts", "transcripts_select_visible_report", "SELECT"),
+    ("transcription_attempts", "transcription_attempts_select_visible_report", "SELECT"),
+    ("transcript_confirmations", "transcript_confirmations_select_visible_report", "SELECT"),
     ("clarifications", "clarifications_select_visible_report", "SELECT"),
     ("ai_drafts", "ai_drafts_select_visible_report", "SELECT"),
     ("review_decisions", "review_decisions_select_visible_report", "SELECT"),
@@ -205,6 +209,50 @@ async def seed_matrix(conn: asyncpg.Connection[asyncpg.Record]) -> MatrixRows:
         values ($1, $2, 'stub', 'stub-transcription', 'other transcript') returning id
         """,
         other_media,
+        other_report,
+    )
+    own_attempt = await conn.fetchval(
+        """
+        insert into public.transcription_attempts (
+          media_id, report_id, transcript_id, provider, model, hint_locale,
+          detected_locale, confidence, usable, latency_ms
+        ) values ($1, $2, $3, 'stub', 'stub-transcription', 'en-SG',
+                  'en-SG', 0.9, true, 1) returning id
+        """,
+        own_media,
+        own_report,
+        own_transcript,
+    )
+    other_attempt = await conn.fetchval(
+        """
+        insert into public.transcription_attempts (
+          media_id, report_id, transcript_id, provider, model, hint_locale,
+          detected_locale, confidence, usable, latency_ms
+        ) values ($1, $2, $3, 'stub', 'stub-transcription', 'en-SG',
+                  'en-SG', 0.9, true, 1) returning id
+        """,
+        other_media,
+        other_report,
+        other_transcript,
+    )
+    own_confirmation = await conn.fetchval(
+        """
+        insert into public.transcript_confirmations (
+          transcript_id, report_id, context, context_id, confirmed_text, input_mode
+        ) values ($1, $2, 'report_description', $2, 'own transcript', 'voice')
+        returning id
+        """,
+        own_transcript,
+        own_report,
+    )
+    other_confirmation = await conn.fetchval(
+        """
+        insert into public.transcript_confirmations (
+          transcript_id, report_id, context, context_id, confirmed_text, input_mode
+        ) values ($1, $2, 'report_description', $2, 'other transcript', 'voice')
+        returning id
+        """,
+        other_transcript,
         other_report,
     )
 
@@ -530,6 +578,8 @@ async def seed_matrix(conn: asyncpg.Connection[asyncpg.Record]) -> MatrixRows:
         own_rows={
             "report_media": own_media,
             "transcripts": own_transcript,
+            "transcription_attempts": own_attempt,
+            "transcript_confirmations": own_confirmation,
             "clarifications": own_clarification,
             "ai_drafts": own_draft,
             "review_decisions": own_decision,
@@ -541,6 +591,8 @@ async def seed_matrix(conn: asyncpg.Connection[asyncpg.Record]) -> MatrixRows:
         other_rows={
             "report_media": other_media,
             "transcripts": other_transcript,
+            "transcription_attempts": other_attempt,
+            "transcript_confirmations": other_confirmation,
             "clarifications": other_clarification,
             "ai_drafts": other_draft,
             "review_decisions": other_decision,

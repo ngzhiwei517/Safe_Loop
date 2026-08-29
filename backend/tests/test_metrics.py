@@ -110,6 +110,35 @@ class FakeConnection:
                     ],
                 }
             ]
+        if "report.description_original as confirmed_text" in query:
+            return [
+                {
+                    "id": UUID("30000000-0000-0000-0000-000000000001"),
+                    "input_mode": "typed",
+                    "confirmed_text": "Typed report",
+                    "text_raw": None,
+                    "detected_locale": None,
+                },
+                {
+                    "id": UUID("30000000-0000-0000-0000-000000000002"),
+                    "input_mode": "voice",
+                    "confirmed_text": "六楼没有护栏",
+                    "text_raw": "六楼没有护栏",
+                    "detected_locale": "zh-CN",
+                },
+                {
+                    "id": UUID("30000000-0000-0000-0000-000000000003"),
+                    "input_mode": "voice_edited",
+                    "confirmed_text": "Guardrail fixed",
+                    "text_raw": "Guardrail fixd",
+                    "detected_locale": "en-SG",
+                },
+            ]
+        if "from transcription_attempts" in query:
+            return [
+                {"locale": "en-SG", "attempt_count": 1, "failure_count": 0},
+                {"locale": "zh-CN", "attempt_count": 2, "failure_count": 1},
+            ]
         raise AssertionError("unexpected metrics query")
 
     async def fetchrow(self, query: str, *_: object) -> dict[str, object]:
@@ -161,6 +190,13 @@ def test_metrics_summary_preserves_zero_statuses_and_explicit_seconds(
     assert summary.questions_most_often_wrong[0].question_id == QUESTION_TWO_ID
     assert summary.repeat_hazards[0].recurrence_count == 2
     assert summary.repeat_hazards[0].responsible_rework[0].rework_rate == 0.25
+    assert summary.report_count == 3
+    assert summary.voice_report_share == pytest.approx(2 / 3)
+    assert summary.transcript_accepted_unedited_rate == 0.5
+    assert summary.median_voice_edit_distance == 0.5
+    assert summary.transcription_failure_rate == pytest.approx(1 / 3)
+    assert summary.voice_by_detected_locale[1].detected_locale == "zh-CN"
+    assert summary.voice_by_detected_locale[1].transcription_failure_rate == 0.5
 
 
 @pytest.mark.parametrize(

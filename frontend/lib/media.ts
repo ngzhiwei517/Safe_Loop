@@ -202,6 +202,7 @@ export type ReportAudioUpload = {
 type AudioUploadOptions = ReportAudioUpload & {
   reportId: string;
   accessToken: string;
+  phase?: MediaPhase;
 };
 
 function audioFileExtension(mimeType: AudioMimeType): string {
@@ -215,6 +216,7 @@ export async function uploadReportAudio({
   userId,
   reportId,
   accessToken,
+  phase = mediaPhase.original,
 }: AudioUploadOptions): Promise<RegisteredMedia> {
   const mimeType = normalizedAudioMimeType(file.type);
   if (!mimeType) {
@@ -253,7 +255,7 @@ export async function uploadReportAudio({
         body: JSON.stringify({
           storage_path: storagePath,
           mime_type: mimeType,
-          phase: mediaPhase.original,
+          phase,
           caption: null,
         }),
       },

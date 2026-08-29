@@ -137,6 +137,8 @@ export function ReviewDecisionPage({
   id: string;
   requestedLocale: string;
 }) {
+  // Reviewer decisions and reasons are deliberate accountable acts. Keep every
+  // field on this surface typed-only; do not add VoiceConfirmedTextarea here.
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
   const [report, setReport] = useState<ReportDetail | null>(null);

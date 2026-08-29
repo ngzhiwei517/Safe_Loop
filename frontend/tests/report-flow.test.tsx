@@ -34,6 +34,7 @@ vi.mock("../lib/reports", () => ({
   fileReport: vi.fn(),
 }));
 vi.mock("../lib/media", () => ({
+  mediaPhase: { original: "original", evidence: "evidence" },
   uploadReportAudio: vi.fn(),
 }));
 vi.mock("../lib/transcription", () => ({

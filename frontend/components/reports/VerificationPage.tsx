@@ -102,6 +102,8 @@ export function VerificationPage({
   id: string;
   requestedLocale: string;
 }) {
+  // Verification notes are deliberate inspection evidence. Keep this surface
+  // typed-only; do not add VoiceConfirmedTextarea here.
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
   const [report, setReport] = useState<ReportDetail | null>(null);

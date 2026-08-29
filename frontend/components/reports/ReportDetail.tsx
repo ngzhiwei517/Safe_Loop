@@ -29,6 +29,7 @@ import { Field } from "../ui/Field";
 import { PhotoStrip } from "../ui/PhotoStrip";
 import { StatusChip } from "../ui/StatusChip";
 import { Timeline, type TimelineEvent } from "../ui/Timeline";
+import { VoiceConfirmedTextarea } from "./VoiceConfirmedTextarea";
 
 const transitionErrorKeys: Record<string, string> = {
   reason_required: "error.reason_required",
@@ -48,6 +49,7 @@ const clarificationErrorKeys: Record<string, string> = {
   clarification_not_found: "error.clarification_not_found",
   clarification_already_answered: "error.clarification_already_answered",
   clarification_round_invalid: "error.clarification_round_invalid",
+  clarification_transcript_not_found: "error.clarification_transcript_not_found",
 };
 
 function actorKey(entry: TimelineEntry): string {
@@ -101,6 +103,8 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
   const [submitting, setSubmitting] = useState(false);
   const [actionErrorKey, setActionErrorKey] = useState<string | null>(null);
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+  const [clarificationTranscripts, setClarificationTranscripts] = useState<Record<string, string>>({});
+  const [transcribingClarification, setTranscribingClarification] = useState<string | null>(null);
   const [answeringClarification, setAnsweringClarification] = useState<string | null>(null);
   const [clarificationErrorKey, setClarificationErrorKey] = useState<string | null>(null);
 
@@ -180,8 +184,20 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
         data: { session },
       } = await createClient().auth.getSession();
       if (!session) throw new Error("session_required");
-      await answerClarification(id, clarificationId, answer, session.access_token);
+      const transcriptId = clarificationTranscripts[clarificationId];
+      if (transcriptId) {
+        await answerClarification(
+          id, clarificationId, answer, session.access_token, transcriptId,
+        );
+      } else {
+        await answerClarification(id, clarificationId, answer, session.access_token);
+      }
       setClarificationAnswers((current) => {
+        const next = { ...current };
+        delete next[clarificationId];
+        return next;
+      });
+      setClarificationTranscripts((current) => {
         const next = { ...current };
         delete next[clarificationId];
         return next;
@@ -404,17 +420,30 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
                   key={clarification.id}
                 >
                   <p className="text-base font-bold text-ink">{clarification.question}</p>
-                  <Field
+                  <VoiceConfirmedTextarea
+                    id={`clarification-${clarification.id}`}
                     label={t("report.clarification.answerLabel")}
                     rows={3}
                     value={answer}
-                    onChange={(event) => setClarificationAnswers((current) => ({
+                    locale={locale}
+                    reportId={id}
+                    onTranscriptIdChange={(transcriptId) => setClarificationTranscripts((current) => {
+                      const next = { ...current };
+                      if (transcriptId) next[clarification.id] = transcriptId;
+                      else delete next[clarification.id];
+                      return next;
+                    })}
+                    onProcessingChange={(processing) => setTranscribingClarification(
+                      processing ? clarification.id : null,
+                    )}
+                    onChange={(value) => setClarificationAnswers((current) => ({
                       ...current,
-                      [clarification.id]: event.target.value,
+                      [clarification.id]: value,
                     }))}
                   />
                   <SecondaryButton
-                    disabled={!answer.trim() || answeringClarification !== null}
+                    disabled={!answer.trim() || answeringClarification !== null
+                      || transcribingClarification !== null}
                     label={answering
                       ? t("report.clarification.submitting")
                       : t("report.clarification.submit")}

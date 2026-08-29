@@ -321,13 +321,14 @@ export function answerClarification(
   clarificationId: string,
   answer: string,
   accessToken: string,
+  transcriptId?: string,
 ): Promise<{ id: string; report_id: string; answered_at: string; round_complete: boolean }> {
   return apiFetch(
     `/reports/${reportId}/clarifications/${clarificationId}/answer`,
     accessToken,
     {
       method: "POST",
-      body: JSON.stringify({ answer }),
+      body: JSON.stringify({ answer, transcript_id: transcriptId }),
     },
   );
 }

@@ -25,6 +25,7 @@ from app.services.transcription_service import (
     download_audio,
     get_audio_media,
     persist_transcript,
+    persist_transcription_attempt,
 )
 
 router = APIRouter(tags=["transcription"])
@@ -94,21 +95,34 @@ async def post_transcribe(
     try:
         provider = get_transcription_provider()
     except ProviderConfigurationError:
-        return _provider_failure(
-            TranscriptionFailure(
-                code="provider_misconfigured",
-                provider="unavailable",
-                model="unavailable",
-                retryable=False,
-                latency_ms=0,
-            )
+        failure = TranscriptionFailure(
+            code="provider_misconfigured",
+            provider="unavailable",
+            model="unavailable",
+            retryable=False,
+            latency_ms=0,
         )
+        await persist_transcription_attempt(
+            media,
+            hint_locale=payload.hint_locale,
+            result=failure,
+            transcript_id=None,
+            usable=False,
+        )
+        return _provider_failure(failure)
     result = await provider.transcribe(
         audio_bytes,
         media.mime_type,
         payload.hint_locale,
     )
     if isinstance(result, TranscriptionFailure):
+        await persist_transcription_attempt(
+            media,
+            hint_locale=payload.hint_locale,
+            result=result,
+            transcript_id=None,
+            usable=False,
+        )
         return _provider_failure(result)
 
     stored = await persist_transcript(
@@ -117,16 +131,21 @@ async def post_transcribe(
         hint_locale=payload.hint_locale,
         transcript=result,
     )
+    usable = result.confidence >= get_settings().transcription_confidence_threshold
+    await persist_transcription_attempt(
+        media,
+        hint_locale=payload.hint_locale,
+        result=result,
+        transcript_id=stored["id"],
+        usable=usable,
+    )
     return cast(
         dict[str, object],
         jsonable_encoder(
             {
                 **cast(Transcript, result).model_dump(mode="json"),
                 "transcript_id": stored["id"],
-                "meets_confidence_threshold": (
-                    result.confidence
-                    >= get_settings().transcription_confidence_threshold
-                ),
+                "meets_confidence_threshold": usable,
             }
         ),
     )

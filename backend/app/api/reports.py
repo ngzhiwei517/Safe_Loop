@@ -120,10 +120,14 @@ class ActionSubmitRequest(BaseModel):
 
     completed_note: str | None = Field(default=None, max_length=4000)
     media_ids: list[UUID] = Field(default_factory=list, max_length=10)
+    transcript_id: UUID | None = None
 
 
 class VerifyRequest(BaseModel):
     """Record one human inspection and any deadline for the next rework cycle."""
+
+    # Deliberately typed-only: reviewer decisions, reasons, and verification notes
+    # must remain conscious human acts. Do not add voice transcription here.
 
     passed: bool
     checklist: dict[str, object] | list[object] | None = None
@@ -136,6 +140,7 @@ class ClarificationAnswerRequest(BaseModel):
     """Carry reporter-supplied text for one pending clarification."""
 
     answer: str = Field(max_length=4000)
+    transcript_id: UUID | None = None
 
 
 _REVIEW_DECISION_BY_EVENT = {
@@ -234,6 +239,7 @@ def action_error(error: ActionError) -> HTTPException:
         "action_not_submittable": status.HTTP_409_CONFLICT,
         "action_evidence_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
         "action_media_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "action_transcript_not_found": status.HTTP_422_UNPROCESSABLE_ENTITY,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -322,6 +328,7 @@ def clarification_error(error: ClarificationError) -> HTTPException:
         "report_not_clarifying": status.HTTP_409_CONFLICT,
         "clarification_already_answered": status.HTTP_409_CONFLICT,
         "clarification_round_invalid": status.HTTP_409_CONFLICT,
+        "clarification_transcript_not_found": status.HTTP_422_UNPROCESSABLE_ENTITY,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -601,6 +608,7 @@ async def post_action_submission(
             actor,
             completed_note=payload.completed_note,
             media_ids=payload.media_ids,
+            transcript_id=payload.transcript_id,
         )
     except ActionError as error:
         raise action_error(error) from error
@@ -772,6 +780,7 @@ async def post_clarification_answer(
             clarification_id,
             actor,
             payload.answer,
+            payload.transcript_id,
         )
     except ClarificationError as error:
         raise clarification_error(error) from error

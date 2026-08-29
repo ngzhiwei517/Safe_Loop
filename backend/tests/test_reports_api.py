@@ -443,7 +443,10 @@ def test_answer_endpoint_schedules_intake_after_round_completion(
         }
         rerun = True
 
-    async def fake_answer(*_: object, **__: object) -> StoredAnswer:
+    captured: list[object] = []
+
+    async def fake_answer(*values: object, **__: object) -> StoredAnswer:
+        captured.extend(values)
         return StoredAnswer()
 
     monkeypatch.setattr(reports_api, "answer_clarification", fake_answer)
@@ -458,7 +461,10 @@ def test_answer_endpoint_schedules_intake_after_round_completion(
         reports_api.post_clarification_answer(
             REPORT_ID,
             clarification_id,
-            reports_api.ClarificationAnswerRequest(answer="Level 6 east edge"),
+            reports_api.ClarificationAnswerRequest(
+                answer="Level 6 east edge",
+                transcript_id=UUID("70000000-0000-0000-0000-000000000001"),
+            ),
             background_tasks,
             Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
         )
@@ -469,6 +475,7 @@ def test_answer_endpoint_schedules_intake_after_round_completion(
     assert len(background_tasks.tasks) == 1
     assert background_tasks.tasks[0].func is reports_api.run_intake
     assert background_tasks.tasks[0].args == (REPORT_ID, "request-clarification")
+    assert captured[-1] == UUID("70000000-0000-0000-0000-000000000001")
 
 
 def test_every_state_machine_event_has_action_and_timeline_catalogue_keys() -> None:

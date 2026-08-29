@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 import json
+from statistics import median
 from typing import cast
 from uuid import UUID
 
@@ -76,6 +77,21 @@ class RepeatHazardCluster:
 
 
 @dataclass(frozen=True)
+class VoiceLocaleMetrics:
+    """Show ASR acceptance and reliability for one detected/fallback locale."""
+
+    detected_locale: str
+    voice_report_count: int
+    voice_unedited_count: int
+    voice_edited_count: int
+    transcript_accepted_unedited_rate: float | None
+    median_edit_distance: float | None
+    transcription_attempt_count: int
+    transcription_failure_count: int
+    transcription_failure_rate: float | None
+
+
+@dataclass(frozen=True)
 class MetricsSummary:
     """Keep metric names and units explicit at the API boundary."""
 
@@ -96,6 +112,15 @@ class MetricsSummary:
     questions_most_often_wrong: tuple[QuestionPerformance, ...]
     repeat_hazard_window_days: int
     repeat_hazards: tuple[RepeatHazardCluster, ...]
+    report_count: int
+    voice_report_count: int
+    voice_report_share: float
+    transcript_accepted_unedited_rate: float | None
+    median_voice_edit_distance: float | None
+    transcription_attempt_count: int
+    transcription_failure_count: int
+    transcription_failure_rate: float | None
+    voice_by_detected_locale: tuple[VoiceLocaleMetrics, ...]
 
 
 def _optional_float(value: object) -> float | None:
@@ -136,6 +161,23 @@ def _responsible_rework(value: object) -> tuple[ResponsibleRework, ...]:
             )
         )
     return tuple(result)
+
+
+def _edit_distance(left: str, right: str) -> int:
+    """Compute Unicode code-point Levenshtein distance without a DB extension."""
+    if len(left) < len(right):
+        left, right = right, left
+    previous = list(range(len(right) + 1))
+    for left_index, left_character in enumerate(left, start=1):
+        current = [left_index]
+        for right_index, right_character in enumerate(right, start=1):
+            current.append(min(
+                current[-1] + 1,
+                previous[right_index] + 1,
+                previous[right_index - 1] + (left_character != right_character),
+            ))
+        previous = current
+    return previous[-1]
 
 
 async def get_metrics_summary(actor: Actor) -> MetricsSummary:
@@ -521,6 +563,38 @@ async def get_metrics_summary(actor: Actor) -> MetricsSummary:
                   cluster.location_key
                 """
             )
+            voice_report_rows = await conn.fetch(
+                """
+                select
+                  report.id,
+                  report.input_mode::text as input_mode,
+                  report.description_original as confirmed_text,
+                  transcript.text_raw,
+                  transcript.detected_locale
+                from reports report
+                left join lateral (
+                  select item.text_raw, item.detected_locale
+                  from transcripts item
+                  left join transcript_confirmations confirmation
+                    on confirmation.transcript_id = item.id
+                   and confirmation.context = 'report_description'
+                  where item.report_id = report.id
+                  order by (confirmation.id is not null) desc, item.created_at, item.id
+                  limit 1
+                ) transcript on true
+                where report.submitted_at is not null
+                """
+            )
+            attempt_rows = await conn.fetch(
+                """
+                select coalesce(detected_locale, hint_locale, 'unknown') as locale,
+                       count(*)::integer as attempt_count,
+                       count(*) filter (where not usable)::integer as failure_count
+                from transcription_attempts
+                group by coalesce(detected_locale, hint_locale, 'unknown')
+                order by locale
+                """
+            )
     if summary is None:
         raise RuntimeError("database did not return metrics summary")
     if learning is None:
@@ -570,6 +644,53 @@ async def get_metrics_summary(actor: Actor) -> MetricsSummary:
         )
         for row in repeat_rows
     )
+    report_count = len(voice_report_rows)
+    voice_rows = [
+        row for row in voice_report_rows
+        if row["input_mode"] in {"voice", "voice_edited"}
+    ]
+    voice_unedited_count = sum(row["input_mode"] == "voice" for row in voice_rows)
+    edit_distances = [
+        _edit_distance(str(row["text_raw"]), str(row["confirmed_text"]))
+        for row in voice_rows
+        if row["text_raw"] is not None
+    ]
+    attempt_by_locale = {str(row["locale"]): row for row in attempt_rows}
+    voice_locales = {
+        str(row["detected_locale"] or "unknown") for row in voice_rows
+    } | set(attempt_by_locale)
+    voice_by_locale: list[VoiceLocaleMetrics] = []
+    for locale in sorted(voice_locales):
+        locale_voice = [
+            row for row in voice_rows
+            if str(row["detected_locale"] or "unknown") == locale
+        ]
+        locale_unedited = sum(row["input_mode"] == "voice" for row in locale_voice)
+        locale_edits = [
+            _edit_distance(str(row["text_raw"]), str(row["confirmed_text"]))
+            for row in locale_voice
+            if row["text_raw"] is not None
+        ]
+        attempt = attempt_by_locale.get(locale)
+        attempt_count = int(attempt["attempt_count"]) if attempt is not None else 0
+        failure_count = int(attempt["failure_count"]) if attempt is not None else 0
+        voice_by_locale.append(VoiceLocaleMetrics(
+            detected_locale=locale,
+            voice_report_count=len(locale_voice),
+            voice_unedited_count=locale_unedited,
+            voice_edited_count=len(locale_voice) - locale_unedited,
+            transcript_accepted_unedited_rate=(
+                locale_unedited / len(locale_voice) if locale_voice else None
+            ),
+            median_edit_distance=(float(median(locale_edits)) if locale_edits else None),
+            transcription_attempt_count=attempt_count,
+            transcription_failure_count=failure_count,
+            transcription_failure_rate=(
+                failure_count / attempt_count if attempt_count else None
+            ),
+        ))
+    attempt_count = sum(int(row["attempt_count"]) for row in attempt_rows)
+    failure_count = sum(int(row["failure_count"]) for row in attempt_rows)
     return MetricsSummary(
         open_by_status=open_by_status,
         overdue_count=int(summary["overdue_count"]),
@@ -598,4 +719,19 @@ async def get_metrics_summary(actor: Actor) -> MetricsSummary:
         questions_most_often_wrong=questions_most_often_wrong,
         repeat_hazard_window_days=REPEAT_HAZARD_WINDOW_DAYS,
         repeat_hazards=repeat_hazards,
+        report_count=report_count,
+        voice_report_count=len(voice_rows),
+        voice_report_share=(len(voice_rows) / report_count if report_count else 0),
+        transcript_accepted_unedited_rate=(
+            voice_unedited_count / len(voice_rows) if voice_rows else None
+        ),
+        median_voice_edit_distance=(
+            float(median(edit_distances)) if edit_distances else None
+        ),
+        transcription_attempt_count=attempt_count,
+        transcription_failure_count=failure_count,
+        transcription_failure_rate=(
+            failure_count / attempt_count if attempt_count else None
+        ),
+        voice_by_detected_locale=tuple(voice_by_locale),
     )

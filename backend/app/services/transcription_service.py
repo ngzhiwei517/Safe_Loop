@@ -10,7 +10,11 @@ from uuid import UUID
 import asyncpg
 import httpx
 
-from app.ai.transcription import SUPPORTED_AUDIO_MIME_TYPES, Transcript
+from app.ai.transcription import (
+    SUPPORTED_AUDIO_MIME_TYPES,
+    Transcript,
+    TranscriptionFailure,
+)
 from app.config import get_settings
 from app.db import connection
 from app.domain.enums import MediaPhase, Role
@@ -177,3 +181,39 @@ async def persist_transcript(
     if row is None:
         raise RuntimeError("database did not return the persisted transcript")
     return row
+
+
+async def persist_transcription_attempt(
+    media: AudioMedia,
+    *,
+    hint_locale: str,
+    result: Transcript | TranscriptionFailure,
+    transcript_id: UUID | None,
+    usable: bool,
+) -> None:
+    """Append operational ASR telemetry without changing the request outcome."""
+    transcript = result if isinstance(result, Transcript) else None
+    failure = result if isinstance(result, TranscriptionFailure) else None
+    async with connection() as conn:
+        await conn.execute(
+            """
+            insert into transcription_attempts (
+              media_id, report_id, transcript_id, provider, model,
+              hint_locale, detected_locale, confidence, usable,
+              failure_code, latency_ms
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            """,
+            media.id,
+            media.report_id,
+            transcript_id,
+            result.provider,
+            result.model,
+            hint_locale,
+            transcript.detected_locale if transcript is not None else None,
+            transcript.confidence if transcript is not None else None,
+            usable,
+            failure.code if failure is not None else (
+                "confidence_below_threshold" if not usable else None
+            ),
+            result.latency_ms,
+        )

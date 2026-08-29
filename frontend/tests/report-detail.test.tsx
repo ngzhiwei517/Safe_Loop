@@ -24,6 +24,28 @@ vi.mock("../lib/reports", () => ({
   getTimeline: vi.fn(),
   transitionReport: vi.fn(),
 }));
+vi.mock("../components/reports/VoiceConfirmedTextarea", () => ({
+  VoiceConfirmedTextarea: ({
+    label,
+    value,
+    onChange,
+    onTranscriptIdChange,
+  }: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    onTranscriptIdChange: (id: string | null) => void;
+  }) => (
+    <>
+      <label htmlFor="mock-clarification">{label}</label>
+      <textarea id="mock-clarification" value={value} onChange={(event) => onChange(event.target.value)} />
+      <button type="button" onClick={() => {
+        onChange("语音回答已人工确认");
+        onTranscriptIdChange("transcript-id");
+      }}>mock voice clarification</button>
+    </>
+  ),
+}));
 vi.mock("../lib/supabase/browser", () => ({
   createClient: () => ({
     auth: {
@@ -335,6 +357,36 @@ describe("ReportDetail", () => {
         "test-token",
       ),
     );
+  });
+
+  it("submits an editable voice clarification with transcript evidence", async () => {
+    const report = reportWith([]);
+    report.status = reportStatus.clarifying;
+    report.can_answer_clarifications = true;
+    report.clarifications = [{
+      id: "clarification-id",
+      report_id: "report-id",
+      round: 1,
+      gap: "hazard_detail",
+      question: "What exactly is unsafe?",
+      answer: null,
+      answered_at: null,
+      created_at: "2026-08-22T01:04:00Z",
+    }];
+    vi.mocked(getReport).mockResolvedValue(report);
+    renderDetail();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "mock voice clarification" }));
+    await user.click(screen.getByRole("button", { name: en["report.clarification.submit"] }));
+
+    await waitFor(() => expect(answerClarification).toHaveBeenCalledWith(
+      "report-id",
+      "clarification-id",
+      "语音回答已人工确认",
+      "test-token",
+      "transcript-id",
+    ));
   });
 
   it("renders timeline verbs and actors in Simplified Chinese", async () => {

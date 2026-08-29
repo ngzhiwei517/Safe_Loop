@@ -13,7 +13,7 @@ import {
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import React, { ChangeEvent, useEffect, useRef, useState } from "react";
+import React, { ChangeEvent, useEffect, useState } from "react";
 
 import {
   getAlert,
@@ -28,13 +28,11 @@ import {
   locales,
   type Locale,
 } from "../../lib/locales";
-import { uploadReportAudio } from "../../lib/media";
 import {
   createReportDraft,
   fileReport,
   type NewReportInput,
 } from "../../lib/reports";
-import { transcribeAudio } from "../../lib/transcription";
 import { alertPollIntervalMs, siteEmergencyLine } from "../../lib/site";
 import { createClient } from "../../lib/supabase/browser";
 import { BottomNavigation } from "../navigation/BottomNavigation";
@@ -43,12 +41,11 @@ import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
 import { Card } from "../ui/Card";
 import { Field } from "../ui/Field";
-import { VoiceRecorder } from "./VoiceRecorder";
+import { VoiceConfirmedTextarea } from "./VoiceConfirmedTextarea";
 
 type FlowStep = "capture" | "question" | "urgent" | "review";
 type DangerAnswer = "yes" | "no" | null;
 type RequiredReportField = "description" | "location" | "activity";
-type TranscriptionState = "processing" | "ready" | "lowConfidence" | "failed" | null;
 
 export function ReportFlow() {
   const t = useTranslations();
@@ -72,16 +69,12 @@ export function ReportFlow() {
   const [alertFailed, setAlertFailed] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [audio, setAudio] = useState<File | null>(null);
   const [transcriptId, setTranscriptId] = useState<string | null>(null);
-  const [detectedLocale, setDetectedLocale] = useState<string | null>(null);
-  const [transcriptionState, setTranscriptionState] = useState<TranscriptionState>(null);
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
   const [missingFields, setMissingFields] = useState<RequiredReportField[]>([]);
   const urgentAlertId = urgentAlert?.id;
-  const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
-  const voiceRunRef = useRef(0);
 
   useEffect(() => {
     if (!photo) {
@@ -135,61 +128,15 @@ export function ReportFlow() {
     };
   }
 
-  async function handleVoiceChange(file: File | null) {
-    const run = voiceRunRef.current + 1;
-    voiceRunRef.current = run;
-    setAudio(file);
-    setTranscriptId(null);
-    setDetectedLocale(null);
-    setTranscriptionState(file ? "processing" : null);
-    if (!file) return;
-
-    try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) throw new Error("session_required");
-
-      let reportId = draftId;
-      if (!reportId) {
-        const draft = await createReportDraft(reportInput(), session.access_token);
-        reportId = draft.id;
-        if (voiceRunRef.current !== run) return;
-        setDraftId(reportId);
-      }
-      const media = await uploadReportAudio({
-        client: supabase,
-        file,
-        userId: session.user.id,
-        reportId,
-        accessToken: session.access_token,
-      });
-      const transcript = await transcribeAudio(
-        media.id,
-        locale === "zh-CN" ? "zh-CN" : "en-SG",
-        session.access_token,
-      );
-      if (voiceRunRef.current !== run) return;
-      setTranscriptId(transcript.transcript_id);
-      setDetectedLocale(transcript.detected_locale);
-      if (!transcript.meets_confidence_threshold) {
-        setDescription("");
-        setTranscriptionState("lowConfidence");
-        descriptionRef.current?.focus();
-        return;
-      }
-      setDescription(transcript.text);
-      clearMissingField("description", transcript.text);
-      setTranscriptionState("ready");
-      descriptionRef.current?.focus();
-    } catch {
-      if (voiceRunRef.current !== run) return;
-      setTranscriptId(null);
-      setDetectedLocale(null);
-      setTranscriptionState("failed");
-      descriptionRef.current?.focus();
-    }
+  async function ensureVoiceDraft(): Promise<string> {
+    if (draftId) return draftId;
+    const {
+      data: { session },
+    } = await createClient().auth.getSession();
+    if (!session) throw new Error("session_required");
+    const draft = await createReportDraft(reportInput(), session.access_token);
+    setDraftId(draft.id);
+    return draft.id;
   }
 
   function clearMissingField(field: RequiredReportField, value: string) {
@@ -409,9 +356,8 @@ export function ReportFlow() {
                 onChange={selectPhoto}
               />
             </label>
-            <Field
+            <VoiceConfirmedTextarea
               id="capture-description"
-              inputRef={descriptionRef}
               rows={5}
               label={t("report.new.requiredLabel", {
                 label: t("report.new.whatHappened"),
@@ -424,21 +370,16 @@ export function ReportFlow() {
                 ? t("report.new.validation.description")
                 : undefined}
               value={description}
-              onChange={(event) => {
-                setDescription(event.target.value);
-                clearMissingField("description", event.target.value);
+              locale={locale}
+              reportId={draftId ?? undefined}
+              ensureReportId={ensureVoiceDraft}
+              onTranscriptIdChange={setTranscriptId}
+              onProcessingChange={setVoiceProcessing}
+              onChange={(value) => {
+                setDescription(value);
+                clearMissingField("description", value);
               }}
             />
-            <VoiceRecorder value={audio} onChange={(file) => void handleVoiceChange(file)} />
-            {transcriptionState && (
-              <Banner
-                tone={transcriptionState === "ready" ? "info" : transcriptionState === "processing" ? "info" : "warning"}
-                title={t(`report.voice.transcription.${transcriptionState}.title`)}
-                detail={t(`report.voice.transcription.${transcriptionState}.detail`, {
-                  language: detectedLocale ?? t("report.voice.transcription.unknownLanguage"),
-                })}
-              />
-            )}
             <Field
               id="capture-location"
               label={t("report.new.requiredLabel", {
@@ -487,7 +428,7 @@ export function ReportFlow() {
           )}
           <PrimaryButton
             label={t("report.new.continue")}
-            disabled={transcriptionState === "processing"}
+            disabled={voiceProcessing}
             onClick={continueFromCapture}
           />
         </div>
@@ -578,9 +519,8 @@ export function ReportFlow() {
             <h2 className="text-2xl font-bold">
               {t("report.new.whatReported")}
             </h2>
-            <Field
+            <VoiceConfirmedTextarea
               id="report-description"
-              inputRef={descriptionRef}
               rows={4}
               label={t("report.new.requiredLabel", {
                 label: t("report.new.whatHappened"),
@@ -590,21 +530,16 @@ export function ReportFlow() {
                 ? t("report.new.validation.description")
                 : undefined}
               value={description}
-              onChange={(event) => {
-                setDescription(event.target.value);
-                clearMissingField("description", event.target.value);
+              locale={locale}
+              reportId={draftId ?? undefined}
+              ensureReportId={ensureVoiceDraft}
+              onTranscriptIdChange={setTranscriptId}
+              onProcessingChange={setVoiceProcessing}
+              onChange={(value) => {
+                setDescription(value);
+                clearMissingField("description", value);
               }}
             />
-            <VoiceRecorder value={audio} onChange={(file) => void handleVoiceChange(file)} />
-            {transcriptionState && (
-              <Banner
-                tone={transcriptionState === "ready" || transcriptionState === "processing" ? "info" : "warning"}
-                title={t(`report.voice.transcription.${transcriptionState}.title`)}
-                detail={t(`report.voice.transcription.${transcriptionState}.detail`, {
-                  language: detectedLocale ?? t("report.voice.transcription.unknownLanguage"),
-                })}
-              />
-            )}
             <Field
               id="report-location"
               label={t("report.new.requiredLabel", {
@@ -702,7 +637,7 @@ export function ReportFlow() {
                 ? t("report.new.submitting")
                 : t("report.new.submit")
             }
-            disabled={submitting || transcriptionState === "processing"}
+            disabled={submitting || voiceProcessing}
             onClick={() => void submit()}
           />
           {failed && (
