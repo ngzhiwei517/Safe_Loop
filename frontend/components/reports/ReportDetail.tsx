@@ -4,7 +4,7 @@ import { ArrowLeftIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { ApiError } from "../../lib/api";
 import { defaultLocale, formatDateTime, isLocale } from "../../lib/locales";
@@ -19,6 +19,8 @@ import {
 } from "../../lib/reports";
 import type { ReportStatus } from "../../lib/stateMachine";
 import { createClient } from "../../lib/supabase/browser";
+import { BottomNavigation } from "../navigation/BottomNavigation";
+import { useReporterNavigation } from "../navigation/useReporterNavigation";
 import { Banner } from "../ui/Banner";
 import { SecondaryButton } from "../ui/Buttons";
 import { Card } from "../ui/Card";
@@ -68,9 +70,27 @@ function lastTimelineEvent(entries: TimelineEntry[], event: string): TimelineEnt
   return [...entries].reverse().find((entry) => entry.event === event);
 }
 
+function ReporterDetailShell({
+  children,
+  locale,
+}: {
+  children: ReactNode;
+  locale: Parameters<typeof useReporterNavigation>[0];
+}) {
+  const navItems = useReporterNavigation(locale);
+
+  return (
+    <div className="mx-auto flex min-h-screen max-w-[430px] flex-col bg-bg text-ink">
+      <main className="flex-1 px-5 py-10">{children}</main>
+      <BottomNavigation items={navItems} activeHref={`/${locale}/reports`} />
+    </div>
+  );
+}
+
 export function ReportDetail({ id, requestedLocale }: { id: string; requestedLocale: string }) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useReporterNavigation(locale);
   const [report, setReport] = useState<ReportDetailData | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,11 +197,25 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
   }
 
   if (loading) {
-    return <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 py-10 text-ink"><p className="text-base text-inkMuted" role="status">{t("report.detail.loading")}</p></main>;
+    return (
+      <ReporterDetailShell locale={locale}>
+        <p className="text-base text-inkMuted" role="status">
+          {t("report.detail.loading")}
+        </p>
+      </ReporterDetailShell>
+    );
   }
 
   if (loadFailed || report === null) {
-    return <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 py-10 text-ink"><Banner tone="warning" title={t("report.detail.loadFailedTitle")} detail={t("report.detail.loadFailedDetail")} /></main>;
+    return (
+      <ReporterDetailShell locale={locale}>
+        <Banner
+          tone="warning"
+          title={t("report.detail.loadFailedTitle")}
+          detail={t("report.detail.loadFailedDetail")}
+        />
+      </ReporterDetailShell>
+    );
   }
 
   const timelineEvents = timeline.map((entry) => ({
@@ -269,9 +303,10 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
   );
 
   return (
-    <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 pb-10 text-ink" data-report-id={report.id}>
+    <div className="mx-auto flex min-h-screen max-w-[430px] flex-col bg-bg text-ink">
+      <main className="flex-1 px-5 pb-10" data-report-id={report.id}>
       <header className="grid grid-cols-[44px_1fr_44px] items-center py-5">
-        <Link className="grid min-h-11 min-w-11 place-items-center rounded-control" href={`/${locale}`} aria-label={t("report.detail.back")}>
+        <Link className="grid min-h-11 min-w-11 place-items-center rounded-control" href={`/${locale}/reports`} aria-label={t("report.detail.back")}>
           <ArrowLeftIcon className="h-7 w-7" />
         </Link>
         <h1 className="text-center text-xl font-bold">{t("report.detail.title")}</h1>
@@ -473,6 +508,11 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
           />
         )}
       </div>
-    </main>
+      </main>
+      <BottomNavigation
+        items={navItems}
+        activeHref={`/${locale}/reports`}
+      />
+    </div>
   );
 }

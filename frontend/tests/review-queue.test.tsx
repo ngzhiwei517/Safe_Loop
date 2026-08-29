@@ -118,6 +118,24 @@ describe("ReviewQueue", () => {
     );
   });
 
+  it("keeps reviewers inside the PRD reviewer routes", async () => {
+    renderQueue();
+    await screen.findByText(queueItem.summary);
+
+    const expectedLinks = [
+      [en["review.nav.queue"], `/${defaultLocale}/review`],
+      [en["review.nav.documents"], `/${defaultLocale}/documents`],
+      [en["review.nav.briefings"], `/${defaultLocale}/briefings`],
+      [en["review.nav.dashboard"], `/${defaultLocale}/dashboard`],
+    ] as const;
+    for (const [name, href] of expectedLinks) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(href);
+    }
+    expect(screen.queryByRole("link", { name: en["review.nav.actions"] })).toBeNull();
+    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
+    expect(screen.queryByRole("link", { name: en["app.learn"] })).toBeNull();
+  });
+
   it("offers every generated status and refetches after filtering", async () => {
     renderQueue();
     await screen.findByText(queueItem.summary);

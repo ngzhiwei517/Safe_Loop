@@ -100,6 +100,9 @@ describe("ReportFlow", () => {
   it("creates a draft, submits it, and redirects", async () => {
     vi.mocked(fileReport).mockResolvedValue({ id: "report-id", human_ref: "SL-2026-00001", status: reportStatus.submitted });
     renderFlow();
+    expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))
+      .toBe(`/${defaultLocale}/reports`);
+    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
     const user = await reachReview("Loose edge protection");
     await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
     await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/${defaultLocale}/report/report-id`));

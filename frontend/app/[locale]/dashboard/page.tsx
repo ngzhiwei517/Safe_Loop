@@ -1,4 +1,5 @@
 import { DashboardPage } from "../../../components/metrics/DashboardPage";
+import { requireRole } from "../../../lib/auth";
 
 export default async function MetricsPage({
   params,
@@ -6,5 +7,6 @@ export default async function MetricsPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  return <DashboardPage requestedLocale={locale} />;
+  const { role } = await requireRole(locale, ["reviewer", "admin"]);
+  return <DashboardPage requestedLocale={locale} role={role} />;
 }

@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
-
 import { AlertsPage } from "../../../components/alerts/AlertsPage";
-import { createClient } from "../../../lib/supabase/server";
+import { requireRole } from "../../../lib/auth";
 
 export default async function AlertsRoute({
   params,
@@ -9,18 +7,6 @@ export default async function AlertsRoute({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect(`/${locale}/login`);
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (profile?.role !== "reviewer" && profile?.role !== "admin") {
-    redirect(`/${locale}/not-authorised`);
-  }
-  return <AlertsPage requestedLocale={locale} />;
+  const { role } = await requireRole(locale, ["reviewer", "admin"]);
+  return <AlertsPage requestedLocale={locale} role={role} />;
 }

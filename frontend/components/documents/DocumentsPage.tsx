@@ -2,12 +2,8 @@
 
 import {
   BellIcon,
-  BookOpenIcon,
-  ChartBarIcon,
-  ClipboardDocumentListIcon,
   DocumentTextIcon,
   PlusIcon,
-  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
 import { FormEvent, useCallback, useEffect, useState } from "react";
@@ -29,6 +25,10 @@ import {
   locales,
 } from "../../lib/locales";
 import { createClient } from "../../lib/supabase/browser";
+import {
+  type OperationsRole,
+  useOperationsNavigation,
+} from "../navigation/useOperationsNavigation";
 import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
@@ -60,9 +60,16 @@ const documentErrorKeys: Record<string, string> = {
   document_storage_failed: "error.document_storage_failed",
 };
 
-export function DocumentsPage({ requestedLocale }: { requestedLocale: string }) {
+export function DocumentsPage({
+  requestedLocale,
+  role = "reviewer",
+}: {
+  requestedLocale: string;
+  role?: OperationsRole;
+}) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useOperationsNavigation(locale, role);
   const [items, setItems] = useState<CorpusDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [failureKey, setFailureKey] = useState<string | null>(null);
@@ -147,14 +154,6 @@ export function DocumentsPage({ requestedLocale }: { requestedLocale: string }) 
       setSavingId(null);
     }
   }
-
-  const navItems = [
-    { href: `/${locale}/review`, label: t("review.nav.queue"), icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
-    { href: `/${locale}/actions`, label: t("review.nav.actions"), icon: <WrenchScrewdriverIcon className="h-5 w-5" /> },
-    { href: `/${locale}/documents`, label: t("review.nav.documents"), icon: <DocumentTextIcon className="h-5 w-5" /> },
-    { href: `/${locale}/briefings`, label: t("review.nav.briefings"), icon: <BookOpenIcon className="h-5 w-5" /> },
-    { href: `/${locale}/dashboard`, label: t("review.nav.dashboard"), icon: <ChartBarIcon className="h-5 w-5" /> },
-  ];
 
   return (
     <AppShell

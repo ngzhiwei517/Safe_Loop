@@ -35,6 +35,8 @@ import {
 } from "../../lib/reports";
 import { alertPollIntervalMs, siteEmergencyLine } from "../../lib/site";
 import { createClient } from "../../lib/supabase/browser";
+import { BottomNavigation } from "../navigation/BottomNavigation";
+import { useReporterNavigation } from "../navigation/useReporterNavigation";
 import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
 import { Card } from "../ui/Card";
@@ -48,6 +50,7 @@ export function ReportFlow() {
   const router = useRouter();
   const requestedLocale = useLocale();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useReporterNavigation(locale);
   const [step, setStep] = useState<FlowStep>("capture");
   const [description, setDescription] = useState("");
   const [langOriginal, setLangOriginal] = useState<Locale>(locale);
@@ -258,7 +261,8 @@ export function ReportFlow() {
     activity.trim().length > 0;
 
   return (
-    <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 pb-6 text-ink">
+    <div className="mx-auto flex min-h-screen max-w-[430px] flex-col bg-bg text-ink">
+      <main className="flex-1 px-5 pb-6">
       <header className="grid grid-cols-[44px_1fr_64px] items-center py-5">
         <button
           type="button"
@@ -522,6 +526,11 @@ export function ReportFlow() {
           )}
         </div>
       )}
-    </main>
+      </main>
+      <BottomNavigation
+        items={navItems}
+        activeHref={`/${locale}/report/new`}
+      />
+    </div>
   );
 }

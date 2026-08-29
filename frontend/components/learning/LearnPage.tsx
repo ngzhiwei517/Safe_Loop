@@ -13,16 +13,17 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
 import { listLearningBriefings, type LearningBriefing } from "../../lib/briefings";
+import type { AppRole } from "../../lib/auth";
 import { defaultLocale, formatDate, isLocale, locales } from "../../lib/locales";
 import { createClient } from "../../lib/supabase/browser";
+import { useOperationsNavigation } from "../navigation/useOperationsNavigation";
+import { useReporterNavigation } from "../navigation/useReporterNavigation";
 import { AppShell, type AppShellNavItem } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { Card } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { LanguageSwitch } from "../ui/LanguageSwitch";
 import { briefingSections } from "./CrewBriefingPage";
-
-type AppRole = "reporter" | "reviewer" | "responsible" | "crew" | "admin";
 
 export function LearnPage({
   requestedLocale,
@@ -33,6 +34,11 @@ export function LearnPage({
 }) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const operationsNav = useOperationsNavigation(
+    locale,
+    role === "admin" ? "admin" : "reviewer",
+  );
+  const reporterNav = useReporterNavigation(locale);
   const [briefings, setBriefings] = useState<LearningBriefing[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -72,7 +78,11 @@ export function LearnPage({
       pollStatus
       showUrgentAlerts={reviewerSurface}
       alertsHref={`/${locale}/alerts`}
-      navItems={navItems}
+      navItems={reviewerSurface
+        ? operationsNav
+        : role === "reporter"
+          ? reporterNav
+          : navItems}
       activeHref={`/${locale}/learn`}
       languageSwitch={(
         <LanguageSwitch

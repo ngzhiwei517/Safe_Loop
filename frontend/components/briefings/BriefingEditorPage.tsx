@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  BellIcon,
-  BookOpenIcon,
-  ChartBarIcon,
-  ClipboardDocumentListIcon,
-  DocumentTextIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/outline";
+import { BellIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
@@ -29,6 +22,7 @@ import {
   type Locale,
 } from "../../lib/locales";
 import { createClient } from "../../lib/supabase/browser";
+import { useOperationsNavigation } from "../navigation/useOperationsNavigation";
 import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
@@ -103,6 +97,7 @@ export function BriefingEditorPage({
   const t = useTranslations();
   const router = useRouter();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useOperationsNavigation(locale);
   const [briefing, setBriefing] = useState<ManagedBriefing | null>(null);
   const [draft, setDraft] = useState<BriefingEditPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -202,13 +197,6 @@ export function BriefingEditorPage({
     }
   }
 
-  const navItems = [
-    { href: `/${locale}/review`, label: t("review.nav.queue"), icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
-    { href: `/${locale}/actions`, label: t("review.nav.actions"), icon: <WrenchScrewdriverIcon className="h-5 w-5" /> },
-    { href: `/${locale}/documents`, label: t("review.nav.documents"), icon: <DocumentTextIcon className="h-5 w-5" /> },
-    { href: `/${locale}/briefings`, label: t("review.nav.briefings"), icon: <BookOpenIcon className="h-5 w-5" /> },
-    { href: `/${locale}/dashboard`, label: t("review.nav.dashboard"), icon: <ChartBarIcon className="h-5 w-5" /> },
-  ];
   const publicationTransition = briefing?.available_transitions[0];
 
   return (

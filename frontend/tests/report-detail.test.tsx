@@ -257,6 +257,20 @@ describe("ReportDetail", () => {
     expect(await screen.findByText(en["report.detail.waiting.under_review"])).toBeTruthy();
     expect(screen.queryByText(en["report.detail.actions"])).toBeNull();
     expect(screen.queryByRole("button", { name: en["action.reject"] })).toBeNull();
+    expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))
+      .toBe(`/${defaultLocale}/reports`);
+    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
+  });
+
+  it("keeps reporter navigation available when the report cannot load", async () => {
+    vi.mocked(getReport).mockRejectedValue(new Error("offline"));
+    renderDetail();
+
+    expect(await screen.findByText(en["report.detail.loadFailedTitle"])).toBeTruthy();
+    expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))
+      .toBe(`/${defaultLocale}/reports`);
+    expect(screen.getByRole("link", { name: en["app.inbox"] }).getAttribute("href"))
+      .toBe(`/${defaultLocale}/inbox`);
   });
 
   it("lets the reporter answer a pending clarification without exposing an API code", async () => {

@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  BellIcon,
-  BookOpenIcon,
-  ChartBarIcon,
-  ClipboardDocumentListIcon,
-  DocumentTextIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/outline";
+import { BellIcon, BookOpenIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
@@ -16,6 +9,7 @@ import { ApiError } from "../../lib/api";
 import { listManagedBriefings, type ManagedBriefing } from "../../lib/briefings";
 import { defaultLocale, formatDate, isLocale, locales } from "../../lib/locales";
 import { createClient } from "../../lib/supabase/browser";
+import { useOperationsNavigation } from "../navigation/useOperationsNavigation";
 import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { Card } from "../ui/Card";
@@ -30,6 +24,7 @@ const statusClasses = {
 export function BriefingsPage({ requestedLocale }: { requestedLocale: string }) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useOperationsNavigation(locale);
   const [briefings, setBriefings] = useState<ManagedBriefing[]>([]);
   const [loading, setLoading] = useState(true);
   const [failureKey, setFailureKey] = useState<string | null>(null);
@@ -54,14 +49,6 @@ export function BriefingsPage({ requestedLocale }: { requestedLocale: string }) 
   useEffect(() => {
     void load();
   }, [load]);
-
-  const navItems = [
-    { href: `/${locale}/review`, label: t("review.nav.queue"), icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
-    { href: `/${locale}/actions`, label: t("review.nav.actions"), icon: <WrenchScrewdriverIcon className="h-5 w-5" /> },
-    { href: `/${locale}/documents`, label: t("review.nav.documents"), icon: <DocumentTextIcon className="h-5 w-5" /> },
-    { href: `/${locale}/briefings`, label: t("review.nav.briefings"), icon: <BookOpenIcon className="h-5 w-5" /> },
-    { href: `/${locale}/dashboard`, label: t("review.nav.dashboard"), icon: <ChartBarIcon className="h-5 w-5" /> },
-  ];
 
   return (
     <AppShell
