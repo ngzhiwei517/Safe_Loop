@@ -3,11 +3,7 @@
 import {
   BellAlertIcon,
   BellIcon,
-  BookOpenIcon,
-  ChartBarIcon,
-  ClipboardDocumentListIcon,
   MapPinIcon,
-  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
@@ -21,6 +17,10 @@ import {
 import { defaultLocale, formatDateTime, isLocale, locales } from "../../lib/locales";
 import { siteEmergencyLine } from "../../lib/site";
 import { createClient } from "../../lib/supabase/browser";
+import {
+  type OperationsRole,
+  useOperationsNavigation,
+} from "../navigation/useOperationsNavigation";
 import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
@@ -36,9 +36,16 @@ function alertStateKey(alert: AlertItem): string {
   return "alert.state.sent";
 }
 
-export function AlertsPage({ requestedLocale }: { requestedLocale: string }) {
+export function AlertsPage({
+  requestedLocale,
+  role = "reviewer",
+}: {
+  requestedLocale: string;
+  role?: OperationsRole;
+}) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useOperationsNavigation(locale, role);
   const [items, setItems] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -99,13 +106,6 @@ export function AlertsPage({ requestedLocale }: { requestedLocale: string }) {
       setSavingId(null);
     }
   }
-
-  const navItems = [
-    { href: `/${locale}/review`, label: t("review.nav.queue"), icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
-    { href: `/${locale}/actions`, label: t("review.nav.actions"), icon: <WrenchScrewdriverIcon className="h-5 w-5" /> },
-    { href: `/${locale}/briefings`, label: t("review.nav.briefings"), icon: <BookOpenIcon className="h-5 w-5" /> },
-    { href: `/${locale}/dashboard`, label: t("review.nav.dashboard"), icon: <ChartBarIcon className="h-5 w-5" /> },
-  ];
 
   return (
     <AppShell

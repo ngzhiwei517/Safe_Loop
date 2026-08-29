@@ -8,9 +8,13 @@ import { listAlerts, type AlertItem } from "../../lib/alerts";
 import { listNotifications } from "../../lib/notifications";
 import { alertPollIntervalMs } from "../../lib/site";
 import { createClient } from "../../lib/supabase/browser";
+import {
+  BottomNavigation,
+  type NavigationItem,
+} from "../navigation/BottomNavigation";
 import { Banner } from "./Banner";
 
-export type AppShellNavItem = { href: string; label: string; icon: ReactNode };
+export type AppShellNavItem = NavigationItem;
 
 type IdentityHeader = {
   title?: never;
@@ -151,20 +155,7 @@ export function AppShell({
         </Link>
       </header>
       <main className="flex-1 px-5 py-1">{children}</main>
-      <nav className="sticky bottom-0 flex border-t border-border bg-bg px-2 py-2">
-        {navItems.map((item) => (
-          <Link
-            className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-xs font-bold ${
-              item.href === activeHref ? "text-primary" : "text-inkMuted"
-            }`}
-            href={item.href}
-            key={item.href}
-          >
-            {item.icon}
-            <span>{item.label}</span>
-          </Link>
-        ))}
-      </nav>
+      <BottomNavigation items={navItems} activeHref={activeHref} />
     </div>
   );
 }

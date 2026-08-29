@@ -71,4 +71,37 @@ describe("LearnPage", () => {
     expect(links[0].getAttribute("href")).toBe("/en/b/target-token");
     expect(links[1].getAttribute("href")).toBe("/en/b/newest-token");
   });
+
+  it("keeps the reviewer navigation when a reviewer opens shared learning", async () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={expand(en)}>
+        <LearnPage requestedLocale="en" role="reviewer" />
+      </NextIntlClientProvider>,
+    );
+
+    await screen.findByText(en["learn.item.forYou"]);
+    expect(screen.getByRole("link", { name: en["review.nav.queue"] }).getAttribute("href")).toBe("/en/review");
+    expect(screen.getByRole("link", { name: en["review.nav.documents"] }).getAttribute("href")).toBe("/en/documents");
+    expect(screen.getByRole("link", { name: en["review.nav.briefings"] }).getAttribute("href")).toBe("/en/briefings");
+    expect(screen.getByRole("link", { name: en["review.nav.dashboard"] }).getAttribute("href")).toBe("/en/dashboard");
+    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
+    expect(screen.queryByRole("link", { name: en["app.myReports"] })).toBeNull();
+  });
+
+  it("shows the complete reporter navigation without a dead profile tab", async () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={expand(en)}>
+        <LearnPage requestedLocale="en" role="reporter" />
+      </NextIntlClientProvider>,
+    );
+
+    await screen.findByText(en["learn.item.forYou"]);
+    expect(screen.getByRole("link", { name: en["app.home"] }).getAttribute("href"))
+      .toBe("/en/report/new");
+    expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))
+      .toBe("/en/reports");
+    expect(screen.getByRole("link", { name: en["app.learn"] }).getAttribute("href"))
+      .toBe("/en/learn");
+    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
+  });
 });

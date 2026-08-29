@@ -1,4 +1,5 @@
 import { ActionsPage } from "../../../components/actions/ActionsPage";
+import { requireRole } from "../../../lib/auth";
 
 export default async function ActionsRoute({
   params,
@@ -6,5 +7,6 @@ export default async function ActionsRoute({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
+  await requireRole(locale, ["responsible"]);
   return <ActionsPage requestedLocale={locale} />;
 }

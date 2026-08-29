@@ -35,6 +35,8 @@ import {
 } from "../../lib/reports";
 import { alertPollIntervalMs, siteEmergencyLine } from "../../lib/site";
 import { createClient } from "../../lib/supabase/browser";
+import { BottomNavigation } from "../navigation/BottomNavigation";
+import { useReporterNavigation } from "../navigation/useReporterNavigation";
 import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
 import { Card } from "../ui/Card";
@@ -42,12 +44,14 @@ import { Field } from "../ui/Field";
 
 type FlowStep = "capture" | "question" | "urgent" | "review";
 type DangerAnswer = "yes" | "no" | null;
+type RequiredReportField = "description" | "location" | "activity";
 
 export function ReportFlow() {
   const t = useTranslations();
   const router = useRouter();
   const requestedLocale = useLocale();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useReporterNavigation(locale);
   const [step, setStep] = useState<FlowStep>("capture");
   const [description, setDescription] = useState("");
   const [langOriginal, setLangOriginal] = useState<Locale>(locale);
@@ -66,6 +70,7 @@ export function ReportFlow() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [missingFields, setMissingFields] = useState<RequiredReportField[]>([]);
   const urgentAlertId = urgentAlert?.id;
 
   useEffect(() => {
@@ -121,6 +126,28 @@ export function ReportFlow() {
     };
   }
 
+  function clearMissingField(field: RequiredReportField, value: string) {
+    if (!value.trim()) return;
+    setMissingFields((current) => current.filter((item) => item !== field));
+  }
+
+  function validateRequiredFields(): boolean {
+    const missing: RequiredReportField[] = [];
+    if (!description.trim()) missing.push("description");
+    if (!location.trim()) missing.push("location");
+    if (!activity.trim()) missing.push("activity");
+    setMissingFields(missing);
+    return missing.length === 0;
+  }
+
+  function continueFromCapture() {
+    const missing: RequiredReportField[] = [];
+    if (!description.trim()) missing.push("description");
+    if (!location.trim()) missing.push("location");
+    setMissingFields(missing);
+    if (missing.length === 0) setStep("question");
+  }
+
   async function sendUrgentAlert() {
     setDanger("yes");
     setAlerting(true);
@@ -149,6 +176,10 @@ export function ReportFlow() {
   }
 
   async function submit() {
+    if (!validateRequiredFields()) {
+      setFailed(false);
+      return;
+    }
     setSubmitting(true);
     setFailed(false);
 
@@ -251,14 +282,13 @@ export function ReportFlow() {
       : step === "question"
         ? t("report.new.questionTitle")
         : t("report.new.reviewTitle");
-  const canContinue = description.trim().length > 0;
-  const canSubmit =
-    description.trim().length > 0 &&
-    location.trim().length > 0 &&
-    activity.trim().length > 0;
+  const missingFieldLabels = missingFields.map((field) =>
+    t(`report.new.validation.field.${field}`),
+  );
 
   return (
-    <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 pb-6 text-ink">
+    <div className="mx-auto flex min-h-screen max-w-[430px] flex-col bg-bg text-ink">
+      <main className="flex-1 px-5 pb-6">
       <header className="grid grid-cols-[44px_1fr_64px] items-center py-5">
         <button
           type="button"
@@ -313,19 +343,39 @@ export function ReportFlow() {
               />
             </label>
             <Field
+              id="capture-description"
               rows={5}
-              label={t("report.new.whatHappened")}
+              label={t("report.new.requiredLabel", {
+                label: t("report.new.whatHappened"),
+              })}
               placeholder={t("report.new.descriptionExample", {
                 guardrail: t("term.guardrail"),
               })}
+              required
+              error={missingFields.includes("description")
+                ? t("report.new.validation.description")
+                : undefined}
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(event) => {
+                setDescription(event.target.value);
+                clearMissingField("description", event.target.value);
+              }}
             />
             <Field
-              label={t("report.new.location")}
+              id="capture-location"
+              label={t("report.new.requiredLabel", {
+                label: t("report.new.location"),
+              })}
               placeholder={t("report.new.locationPlaceholder")}
+              required
+              error={missingFields.includes("location")
+                ? t("report.new.validation.location")
+                : undefined}
               value={location}
-              onChange={(event) => setLocation(event.target.value)}
+              onChange={(event) => {
+                setLocation(event.target.value);
+                clearMissingField("location", event.target.value);
+              }}
             />
             <label className="block text-sm font-bold text-inkMuted">
               <span>{t("report.new.reportLanguage")}</span>
@@ -346,10 +396,20 @@ export function ReportFlow() {
               </select>
             </label>
           </Card>
+          {missingFields.length > 0 && (
+            <div role="alert">
+              <Banner
+                tone="warning"
+                title={t("report.new.validation.title")}
+                detail={t("report.new.validation.detail", {
+                  fields: missingFieldLabels.join(", "),
+                })}
+              />
+            </div>
+          )}
           <PrimaryButton
             label={t("report.new.continue")}
-            disabled={!canContinue}
-            onClick={() => setStep("question")}
+            onClick={continueFromCapture}
           />
         </div>
       )}
@@ -440,22 +500,52 @@ export function ReportFlow() {
               {t("report.new.whatReported")}
             </h2>
             <Field
+              id="report-description"
               rows={4}
-              label={t("report.new.whatHappened")}
+              label={t("report.new.requiredLabel", {
+                label: t("report.new.whatHappened"),
+              })}
+              required
+              error={missingFields.includes("description")
+                ? t("report.new.validation.description")
+                : undefined}
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(event) => {
+                setDescription(event.target.value);
+                clearMissingField("description", event.target.value);
+              }}
             />
             <Field
-              label={t("report.new.location")}
+              id="report-location"
+              label={t("report.new.requiredLabel", {
+                label: t("report.new.location"),
+              })}
               placeholder={t("report.new.locationPlaceholder")}
+              required
+              error={missingFields.includes("location")
+                ? t("report.new.validation.location")
+                : undefined}
               value={location}
-              onChange={(event) => setLocation(event.target.value)}
+              onChange={(event) => {
+                setLocation(event.target.value);
+                clearMissingField("location", event.target.value);
+              }}
             />
             <Field
-              label={t("report.new.activity")}
+              id="report-activity"
+              label={t("report.new.requiredLabel", {
+                label: t("report.new.activity"),
+              })}
               placeholder={t("report.new.activityPlaceholder")}
+              required
+              error={missingFields.includes("activity")
+                ? t("report.new.validation.activity")
+                : undefined}
               value={activity}
-              onChange={(event) => setActivity(event.target.value)}
+              onChange={(event) => {
+                setActivity(event.target.value);
+                clearMissingField("activity", event.target.value);
+              }}
             />
             <button
               type="button"
@@ -505,13 +595,24 @@ export function ReportFlow() {
               detail={t("report.new.failureDetail")}
             />
           )}
+          {missingFields.length > 0 && (
+            <div role="alert">
+              <Banner
+                tone="warning"
+                title={t("report.new.validation.title")}
+                detail={t("report.new.validation.detail", {
+                  fields: missingFieldLabels.join(", "),
+                })}
+              />
+            </div>
+          )}
           <PrimaryButton
             label={
               submitting
                 ? t("report.new.submitting")
                 : t("report.new.submit")
             }
-            disabled={!canSubmit || submitting}
+            disabled={submitting}
             onClick={() => void submit()}
           />
           {failed && (
@@ -522,6 +623,11 @@ export function ReportFlow() {
           )}
         </div>
       )}
-    </main>
+      </main>
+      <BottomNavigation
+        items={navItems}
+        activeHref={`/${locale}/report/new`}
+      />
+    </div>
   );
 }

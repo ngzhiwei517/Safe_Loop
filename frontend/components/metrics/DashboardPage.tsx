@@ -3,13 +3,8 @@
 import {
   ArrowTrendingUpIcon,
   BellIcon,
-  BookOpenIcon,
-  ChartBarIcon,
-  ClipboardDocumentListIcon,
-  DocumentTextIcon,
   ExclamationTriangleIcon,
   UserGroupIcon,
-  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
@@ -26,6 +21,10 @@ import {
 import { getMetricsSummary, type MetricsSummary } from "../../lib/metrics";
 import { reportStatuses } from "../../lib/stateMachine";
 import { createClient } from "../../lib/supabase/browser";
+import {
+  type OperationsRole,
+  useOperationsNavigation,
+} from "../navigation/useOperationsNavigation";
 import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { SecondaryButton } from "../ui/Buttons";
@@ -56,9 +55,16 @@ function MetricCard({
   );
 }
 
-export function DashboardPage({ requestedLocale }: { requestedLocale: string }) {
+export function DashboardPage({
+  requestedLocale,
+  role = "reviewer",
+}: {
+  requestedLocale: string;
+  role?: OperationsRole;
+}) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useOperationsNavigation(locale, role);
   const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -93,33 +99,6 @@ export function DashboardPage({ requestedLocale }: { requestedLocale: string }) 
       ]}
     />
   );
-  const navItems = [
-    {
-      href: `/${locale}/review`,
-      label: t("review.nav.queue"),
-      icon: <ClipboardDocumentListIcon className="h-5 w-5" />,
-    },
-    {
-      href: `/${locale}/actions`,
-      label: t("review.nav.actions"),
-      icon: <WrenchScrewdriverIcon className="h-5 w-5" />,
-    },
-    {
-      href: `/${locale}/documents`,
-      label: t("review.nav.documents"),
-      icon: <DocumentTextIcon className="h-5 w-5" />,
-    },
-    {
-      href: `/${locale}/briefings`,
-      label: t("review.nav.briefings"),
-      icon: <BookOpenIcon className="h-5 w-5" />,
-    },
-    {
-      href: `/${locale}/dashboard`,
-      label: t("review.nav.dashboard"),
-      icon: <ChartBarIcon className="h-5 w-5" />,
-    },
-  ];
   const openTotal = metrics
     ? Object.values(metrics.open_by_status).reduce(
         (total, count) => total + (count ?? 0),

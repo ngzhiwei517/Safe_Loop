@@ -2,13 +2,10 @@
 
 import {
   BellIcon,
-  BookOpenIcon,
-  ChartBarIcon,
   ClipboardDocumentListIcon,
   HomeIcon,
   IdentificationIcon,
   LightBulbIcon,
-  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
@@ -21,13 +18,14 @@ import {
   type NotificationItem,
 } from "../../lib/notifications";
 import { createClient } from "../../lib/supabase/browser";
+import type { AppRole } from "../../lib/auth";
+import { useOperationsNavigation } from "../navigation/useOperationsNavigation";
+import { useReporterNavigation } from "../navigation/useReporterNavigation";
 import { AppShell, type AppShellNavItem } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { Card } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { LanguageSwitch } from "../ui/LanguageSwitch";
-
-type AppRole = "reporter" | "reviewer" | "responsible" | "crew" | "admin";
 
 function notificationHref(item: NotificationItem, locale: string): string {
   if (item.kind === "alert_raised") return `/${locale}/alerts`;
@@ -48,6 +46,11 @@ export function InboxPage({
   const t = useTranslations();
   const router = useRouter();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const operationsNav = useOperationsNavigation(
+    locale,
+    role === "admin" ? "admin" : "reviewer",
+  );
+  const reporterNav = useReporterNavigation(locale);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -87,12 +90,6 @@ export function InboxPage({
     }
   }
 
-  const reviewerNav: AppShellNavItem[] = [
-    { href: `/${locale}/review`, label: t("review.nav.queue"), icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
-    { href: `/${locale}/actions`, label: t("review.nav.actions"), icon: <WrenchScrewdriverIcon className="h-5 w-5" /> },
-    { href: `/${locale}/briefings`, label: t("review.nav.briefings"), icon: <BookOpenIcon className="h-5 w-5" /> },
-    { href: `/${locale}/dashboard`, label: t("review.nav.dashboard"), icon: <ChartBarIcon className="h-5 w-5" /> },
-  ];
   const standardNav: AppShellNavItem[] = [
     { href: `/${locale}`, label: t("app.home"), icon: <HomeIcon className="h-5 w-5" /> },
     { href: `/${locale}/reports`, label: t("app.myReports"), icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
@@ -111,7 +108,11 @@ export function InboxPage({
       pollStatus
       showUrgentAlerts={reviewerSurface}
       alertsHref={`/${locale}/alerts`}
-      navItems={reviewerSurface ? reviewerNav : standardNav}
+      navItems={reviewerSurface
+        ? operationsNav
+        : role === "reporter"
+          ? reporterNav
+          : standardNav}
       activeHref={`/${locale}/inbox`}
       languageSwitch={(
         <LanguageSwitch

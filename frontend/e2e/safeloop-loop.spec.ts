@@ -374,9 +374,15 @@ test.describe.serial("SafeLoop end-to-end contract", () => {
         await briefingCard
           .getByRole("link", { name: copy(locale, "briefings.item.open") })
           .click();
-        await reviewerPage
-          .getByLabel(copy(locale, "briefings.editor.validFrom"))
-          .fill(futureDateInput(0));
+        await expect(reviewerPage).toHaveURL(
+          new RegExp(`/${locale}/briefings/[0-9a-f-]+$`, "u"),
+          { timeout: 30_000 },
+        );
+        const validFromField = reviewerPage.getByLabel(
+          copy(locale, "briefings.editor.validFrom"),
+        );
+        await expect(validFromField).toBeVisible({ timeout: 30_000 });
+        await validFromField.fill(futureDateInput(0));
         await reviewerPage
           .getByLabel(copy(locale, "briefings.editor.validTo"))
           .fill(futureDateInput(30));
