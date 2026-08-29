@@ -117,6 +117,11 @@ npm run tsc
 npm run test
 ```
 
+Production builds use the committed `frontend/lib/stateMachine.ts` contract and do
+not require a running backend. When backend transitions change, start the backend,
+run `npm run generate-state-machine` from `frontend`, then review and commit the
+generated contract before building or deploying.
+
 The database integration tests run when `TEST_DATABASE_URL` is set. The Playwright
 suite refuses a non-loopback Supabase URL, runs with `AI_PROVIDER=stub`, and exercises
 the full English and Mandarin workflow. CI starts an isolated Supabase stack, applies

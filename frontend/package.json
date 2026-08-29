@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/check-token-literals.mjs && node scripts/check-locale-keys.mjs && eslint app components --ext .tsx --max-warnings 0 && node scripts/generate-state-machine.mjs && next build",
+    "build": "node scripts/check-token-literals.mjs && node scripts/check-locale-keys.mjs && eslint app components --ext .tsx --max-warnings 0 && next build",
     "lint:tokens": "node scripts/check-token-literals.mjs",
     "lint:locales": "node scripts/check-locale-keys.mjs",
     "lint:i18n": "eslint app components --ext .tsx --max-warnings 0",
