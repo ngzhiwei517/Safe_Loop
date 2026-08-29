@@ -201,6 +201,7 @@ describe("ReviewDecisionPage", () => {
     expect(screen.getByRole("button", { name: en["action.approve_action"] })).toBeTruthy();
     expect(screen.getByRole("button", { name: en["action.request_info"] })).toBeTruthy();
     expect(screen.getByRole("button", { name: en["action.escalate"] })).toBeTruthy();
+    expect(screen.getByRole("button", { name: en["app.signOut"] })).toBeTruthy();
     expect(screen.getByText(en["review.draft.marker"])).toBeTruthy();
     expect(screen.getByText(en["review.draft.assumptionNotObserved"])).toBeTruthy();
     expect(screen.getByText(report.latest_draft!.observed_facts[0])).toBeTruthy();

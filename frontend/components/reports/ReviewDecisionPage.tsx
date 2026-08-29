@@ -25,6 +25,7 @@ import {
   type Urgency,
 } from "../../lib/reports";
 import { createClient } from "../../lib/supabase/browser";
+import { SignOutButton } from "../auth/SignOutButton";
 import { AiBlock } from "../ui/AiBlock";
 import { Banner } from "../ui/Banner";
 import {
@@ -328,14 +329,17 @@ export function ReviewDecisionPage({
         <h1 className="min-w-0 truncate text-center text-xl font-bold">
           {report.human_ref}
         </h1>
-        <LanguageSwitch
-          current={locale}
-          label={t("app.language")}
-          options={[
-            { value: locales[0], label: t("app.languageEnglish") },
-            { value: locales[1], label: t("app.languageChinese") },
-          ]}
-        />
+        <div className="flex items-center gap-2">
+          <LanguageSwitch
+            current={locale}
+            label={t("app.language")}
+            options={[
+              { value: locales[0], label: t("app.languageEnglish") },
+              { value: locales[1], label: t("app.languageChinese") },
+            ]}
+          />
+          <SignOutButton variant="icon" />
+        </div>
       </header>
 
       <div className="space-y-4">
