@@ -53,14 +53,18 @@ function renderFlow(locale = defaultLocale) {
   return render(<NextIntlClientProvider locale={locale} messages={expand(flat)}><ReportFlow /></NextIntlClientProvider>);
 }
 
+function requiredLabel(label: string): string {
+  return en["report.new.requiredLabel"].replace("{label}", label);
+}
+
 async function reachReview(description: string) {
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText(en["report.new.whatHappened"]), description);
-  await user.type(screen.getByLabelText(en["report.new.location"]), "Level 6");
+  await user.type(screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])), description);
+  await user.type(screen.getByLabelText(requiredLabel(en["report.new.location"])), "Level 6");
   await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
   await user.click(screen.getByRole("button", { name: en["report.new.dangerNo"] }));
   await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
-  await user.type(screen.getByLabelText(en["report.new.activity"]), "Material delivery");
+  await user.type(screen.getByLabelText(requiredLabel(en["report.new.activity"])), "Material delivery");
   return user;
 }
 
@@ -117,6 +121,17 @@ describe("ReportFlow", () => {
     );
   });
 
+  it("names missing required fields when Continue is clicked", async () => {
+    renderFlow();
+    await userEvent.click(screen.getByRole("button", { name: en["report.new.continue"] }));
+
+    expect(screen.getByRole("alert").textContent).toContain(en["report.new.validation.title"]);
+    expect(screen.getByRole("alert").textContent).toContain("What happened, Location");
+    expect(screen.getByText(en["report.new.validation.description"])).toBeTruthy();
+    expect(screen.getByText(en["report.new.validation.location"])).toBeTruthy();
+    expect(screen.getByRole("heading", { name: en["report.new.captureTitle"] })).toBeTruthy();
+  });
+
   it("passes the selected photo and authenticated storage client to submission", async () => {
     vi.mocked(fileReport).mockResolvedValue({ id: "report-id", human_ref: "SL-2026-00001", status: reportStatus.submitted });
     renderFlow();
@@ -146,7 +161,24 @@ describe("ReportFlow", () => {
     const user = await reachReview("Keep this text");
     await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
     await screen.findByText(en["report.new.failureTitle"]);
-    expect((screen.getByLabelText(en["report.new.whatHappened"]) as HTMLTextAreaElement).value).toBe("Keep this text");
+    expect((screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])) as HTMLTextAreaElement).value).toBe("Keep this text");
+  });
+
+  it("names every missing required field before submitting", async () => {
+    renderFlow();
+    const user = await reachReview("Loose edge protection");
+    await user.clear(screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])));
+    await user.clear(screen.getByLabelText(requiredLabel(en["report.new.location"])));
+    await user.clear(screen.getByLabelText(requiredLabel(en["report.new.activity"])));
+
+    await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
+
+    expect(screen.getByRole("alert").textContent).toContain(en["report.new.validation.title"]);
+    expect(screen.getByRole("alert").textContent).toContain("What happened, Location, Activity");
+    expect(screen.getByText(en["report.new.validation.description"])).toBeTruthy();
+    expect(screen.getByText(en["report.new.validation.location"])).toBeTruthy();
+    expect(screen.getByText(en["report.new.validation.activity"])).toBeTruthy();
+    expect(fileReport).not.toHaveBeenCalled();
   });
 
   it("raises an alert on the draft before submission and says sent, not seen", async () => {
@@ -155,10 +187,10 @@ describe("ReportFlow", () => {
     renderFlow();
     const user = userEvent.setup();
     await user.type(
-      screen.getByLabelText(en["report.new.whatHappened"]),
+      screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])),
       "Loose edge protection",
     );
-    await user.type(screen.getByLabelText(en["report.new.location"]), "Level 6");
+    await user.type(screen.getByLabelText(requiredLabel(en["report.new.location"])), "Level 6");
     await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
     await user.click(screen.getByRole("button", { name: en["report.new.dangerYes"] }));
 
