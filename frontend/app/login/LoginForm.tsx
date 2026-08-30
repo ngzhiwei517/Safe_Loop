@@ -49,9 +49,9 @@ export default function LoginForm() {
   }
 
   return (
-    <main className="min-h-screen bg-bg pb-12">
+    <main className="min-h-screen bg-bg pb-6 sm:pb-12">
       <div className="hazard-stripe h-2 w-full" aria-hidden="true" />
-      <div className="mx-auto flex w-full max-w-[520px] flex-col px-5 pb-10 pt-7 sm:px-7 sm:pt-10">
+      <div className="mx-auto flex w-full max-w-[520px] flex-col px-6 pb-6 pt-4 sm:px-7 sm:pb-10 sm:pt-10">
         <div
           className="ml-auto flex rounded-chip bg-surfaceSunken p-1"
           aria-label={t("app.language")}
@@ -73,8 +73,8 @@ export default function LoginForm() {
           ))}
         </div>
 
-        <header className="mt-7 flex flex-col items-center text-center sm:mt-8">
-          <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-[32px] bg-surface p-2 shadow-safe">
+        <header className="mt-4 flex flex-col items-center text-center sm:mt-8">
+          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-[24px] bg-surface p-1.5 shadow-safe sm:h-28 sm:w-28 sm:rounded-[32px] sm:p-2">
             <Image
               src={safeLoopLogo}
               width={112}
@@ -84,23 +84,23 @@ export default function LoginForm() {
               className="h-full w-full object-contain"
             />
           </div>
-          <h1 className="mt-4 text-[2.4rem] font-bold leading-none tracking-tight">
+          <h1 className="mt-3 text-[2rem] font-bold leading-none tracking-tight sm:mt-4 sm:text-[2.4rem]">
             <span>{t("login.brandSafe")}</span><span className="text-primary">{t("login.brandLoop")}</span>
           </h1>
-          <p className="mt-3 text-lg text-inkMuted">{t("login.tagline")}</p>
+          <p className="mt-2 text-base text-inkMuted sm:mt-3 sm:text-lg">{t("login.tagline")}</p>
         </header>
 
-        <section className="mt-8 rounded-[28px] border border-border bg-surface px-6 py-7 shadow-safe sm:px-7 sm:py-8">
-          <h2 className="text-[1.75rem] font-bold leading-tight">{t("login.title")}</h2>
-          <p className="mt-1 text-base text-inkMuted sm:text-lg">{t("login.subtitle")}</p>
+        <section className="mt-5 rounded-[24px] border border-border bg-surface px-5 py-5 shadow-safe sm:mt-8 sm:rounded-[28px] sm:px-7 sm:py-8">
+          <h2 className="text-2xl font-bold leading-tight sm:text-[1.75rem]">{t("login.title")}</h2>
+          <p className="mt-1 text-sm text-inkMuted sm:text-lg">{t("login.subtitle")}</p>
 
-          <form className="mt-7 space-y-6" onSubmit={submit}>
+          <form className="mt-5 space-y-4 sm:mt-7 sm:space-y-6" onSubmit={submit}>
             <label className="block">
-              <span className="text-sm font-bold uppercase tracking-wide">{t("app.email")}</span>
-              <span className="mt-2 flex min-h-16 items-center gap-3 rounded-control border border-border bg-bg px-4 focus-within:border-primary focus-within:ring-2 focus-within:ring-primaryTint">
-                <EnvelopeIcon className="h-6 w-6 shrink-0 text-inkMuted" aria-hidden="true" />
+              <span className="text-xs font-bold uppercase tracking-wide sm:text-sm">{t("app.email")}</span>
+              <span className="mt-1.5 flex min-h-14 items-center gap-3 rounded-control border border-border bg-bg px-4 focus-within:border-primary focus-within:ring-2 focus-within:ring-primaryTint sm:mt-2 sm:min-h-16">
+                <EnvelopeIcon className="h-5 w-5 shrink-0 text-inkMuted sm:h-6 sm:w-6" aria-hidden="true" />
                 <input
-                  className="min-w-0 flex-1 bg-transparent text-lg text-ink outline-none placeholder:text-inkMuted"
+                  className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-inkMuted sm:text-lg"
                   type="email"
                   autoComplete="email"
                   placeholder={t("login.emailPlaceholder")}
@@ -112,11 +112,11 @@ export default function LoginForm() {
             </label>
 
             <label className="block">
-              <span className="text-sm font-bold uppercase tracking-wide">{t("app.password")}</span>
-              <span className="mt-2 flex min-h-16 items-center gap-3 rounded-control border border-border bg-bg px-4 focus-within:border-primary focus-within:ring-2 focus-within:ring-primaryTint">
-                <LockClosedIcon className="h-6 w-6 shrink-0 text-inkMuted" aria-hidden="true" />
+              <span className="text-xs font-bold uppercase tracking-wide sm:text-sm">{t("app.password")}</span>
+              <span className="mt-1.5 flex min-h-14 items-center gap-3 rounded-control border border-border bg-bg px-4 focus-within:border-primary focus-within:ring-2 focus-within:ring-primaryTint sm:mt-2 sm:min-h-16">
+                <LockClosedIcon className="h-5 w-5 shrink-0 text-inkMuted sm:h-6 sm:w-6" aria-hidden="true" />
                 <input
-                  className="min-w-0 flex-1 bg-transparent text-lg text-ink outline-none"
+                  className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none sm:text-lg"
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
@@ -137,7 +137,7 @@ export default function LoginForm() {
             {error && <p className="rounded-control bg-dangerTint p-3 font-bold text-danger" role="alert">{error}</p>}
 
             <button
-              className="min-h-16 w-full rounded-control bg-primary px-4 text-xl font-bold text-ink-inverse shadow-safe transition-colors hover:bg-primaryStrong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="min-h-14 w-full rounded-control bg-primary px-4 text-lg font-bold text-ink-inverse shadow-safe transition-colors hover:bg-primaryStrong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:min-h-16 sm:text-xl"
               type="submit"
             >
               {t("app.signIn")}
