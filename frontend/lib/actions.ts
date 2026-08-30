@@ -11,6 +11,7 @@ export type OpenAction = ReportListItem & {
 export type ActionSubmitInput = {
   completed_note?: string;
   media_ids: string[];
+  transcript_id?: string;
 };
 
 export type ActionSubmitResult = {

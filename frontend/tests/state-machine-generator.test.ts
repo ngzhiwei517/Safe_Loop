@@ -18,6 +18,17 @@ afterEach(async () => {
 });
 
 describe("state-machine generation", () => {
+  it("is explicit and does not make production builds depend on a running API", async () => {
+    const packageJson = JSON.parse(
+      await readFile(resolve(process.cwd(), "package.json"), "utf8"),
+    ) as { scripts: Record<string, string> };
+
+    expect(packageJson.scripts["generate-state-machine"]).toBe(
+      "node scripts/generate-state-machine.mjs",
+    );
+    expect(packageJson.scripts.build).not.toContain("generate-state-machine");
+  });
+
   it("fails without replacing the last valid contract when the API is unavailable", async () => {
     const directory = await mkdtemp(resolve(tmpdir(), "safeloop-state-machine-"));
     temporaryDirectories.push(directory);

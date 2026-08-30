@@ -24,6 +24,28 @@ vi.mock("../lib/reports", () => ({
   getTimeline: vi.fn(),
   transitionReport: vi.fn(),
 }));
+vi.mock("../components/reports/VoiceConfirmedTextarea", () => ({
+  VoiceConfirmedTextarea: ({
+    label,
+    value,
+    onChange,
+    onTranscriptIdChange,
+  }: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    onTranscriptIdChange: (id: string | null) => void;
+  }) => (
+    <>
+      <label htmlFor="mock-clarification">{label}</label>
+      <textarea id="mock-clarification" value={value} onChange={(event) => onChange(event.target.value)} />
+      <button type="button" onClick={() => {
+        onChange("语音回答已人工确认");
+        onTranscriptIdChange("transcript-id");
+      }}>mock voice clarification</button>
+    </>
+  ),
+}));
 vi.mock("../lib/supabase/browser", () => ({
   createClient: () => ({
     auth: {
@@ -250,6 +272,27 @@ describe("ReportDetail", () => {
     );
   });
 
+  it("plays stored audio from its signed URL without treating it as a photo", async () => {
+    const report = reportWith([]);
+    report.media.push({
+      id: "audio-id",
+      storage_path: "private/report.webm",
+      mime_type: "audio/webm",
+      phase: mediaPhase.original,
+      caption: null,
+      retention_until: "2026-11-20T01:00:00Z",
+      signed_url: "https://project.example/report.webm?token=signed",
+      signed_url_expires_at: "2026-08-22T01:10:00Z",
+    });
+    vi.mocked(getReport).mockResolvedValue(report);
+    renderDetail();
+
+    expect(await screen.findByText(en["report.media.audio"])).toBeTruthy();
+    expect(document.querySelector("audio")?.getAttribute("src"))
+      .toBe("https://project.example/report.webm?token=signed");
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+  });
+
   it("shows waiting copy when the server returns no reporter actions", async () => {
     vi.mocked(getReport).mockResolvedValue(reportWith([]));
     renderDetail();
@@ -259,7 +302,8 @@ describe("ReportDetail", () => {
     expect(screen.queryByRole("button", { name: en["action.reject"] })).toBeNull();
     expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))
       .toBe(`/${defaultLocale}/reports`);
-    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
+    expect(screen.getByRole("link", { name: en["app.profile"] }).getAttribute("href"))
+      .toBe(`/${defaultLocale}/profile`);
   });
 
   it("keeps reporter navigation available when the report cannot load", async () => {
@@ -313,6 +357,36 @@ describe("ReportDetail", () => {
         "test-token",
       ),
     );
+  });
+
+  it("submits an editable voice clarification with transcript evidence", async () => {
+    const report = reportWith([]);
+    report.status = reportStatus.clarifying;
+    report.can_answer_clarifications = true;
+    report.clarifications = [{
+      id: "clarification-id",
+      report_id: "report-id",
+      round: 1,
+      gap: "hazard_detail",
+      question: "What exactly is unsafe?",
+      answer: null,
+      answered_at: null,
+      created_at: "2026-08-22T01:04:00Z",
+    }];
+    vi.mocked(getReport).mockResolvedValue(report);
+    renderDetail();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "mock voice clarification" }));
+    await user.click(screen.getByRole("button", { name: en["report.clarification.submit"] }));
+
+    await waitFor(() => expect(answerClarification).toHaveBeenCalledWith(
+      "report-id",
+      "clarification-id",
+      "语音回答已人工确认",
+      "test-token",
+      "transcript-id",
+    ));
   });
 
   it("renders timeline verbs and actors in Simplified Chinese", async () => {

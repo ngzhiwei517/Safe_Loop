@@ -11,9 +11,15 @@ import asyncpg
 import pytest
 
 from app.db import close_pool, connection, init_pool
-from app.domain.enums import ActorType, InputMode, ReportStatus, Role
+from app.domain.enums import ActorType, ReportStatus, Role
 from app.domain.transitions import TransitionError
-from app.services.report_service import Actor, create_report, get_timeline, transition_report
+from app.services.report_service import (
+    Actor,
+    create_report,
+    get_timeline,
+    submit_report,
+    transition_report,
+)
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not set")
@@ -85,13 +91,13 @@ def test_file_report_contract_persists_fields_and_two_audits() -> None:
         level_or_zone="East loading area",
         grid_ref="E6",
         is_confidential=True,
-        input_mode=InputMode.TYPED,
     ))
     try:
-        run(transition_report(
+        run(submit_report(
             report_id,
-            ReportStatus.SUBMITTED,
             Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+            confirmed_text="Loose edge protection",
+            transcript_id=None,
         ))
 
         async def check() -> tuple[str, str, str, bool, int]:
@@ -106,6 +112,65 @@ def test_file_report_contract_persists_fields_and_two_audits() -> None:
                 )
 
         assert run(check()) == ("submitted", "typed", "E6", True, 2)
+    finally:
+        run(cleanup(report_id))
+
+
+def test_voice_edit_preserves_raw_transcript_and_submits_confirmed_text() -> None:
+    report_id = run(create_report(REPORTER_ID, ""))
+    media_id = uuid4()
+    transcript_id = uuid4()
+    raw_text = "六楼边缘没有护栏"
+    confirmed_text = "六楼边缘没有防护栏"
+    try:
+        async def seed_voice() -> None:
+            async with connection() as conn:
+                await conn.execute(
+                    """
+                    insert into report_media (
+                      id, report_id, storage_path, mime_type, phase
+                    ) values ($1, $2, $3, 'audio/webm', 'original')
+                    """,
+                    media_id,
+                    report_id,
+                    f"{REPORTER_ID}/{report_id}/voice.webm",
+                )
+                await conn.execute(
+                    """
+                    insert into transcripts (
+                      id, media_id, report_id, provider, model, hint_locale,
+                      detected_locale, text_raw, confidence, duration_ms
+                    ) values ($1, $2, $3, 'stub', 'stub-v1', 'zh-CN',
+                              'zh-CN', $4, 0.94, 30000)
+                    """,
+                    transcript_id,
+                    media_id,
+                    report_id,
+                    raw_text,
+                )
+
+        run(seed_voice())
+        run(submit_report(
+            report_id,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+            confirmed_text=confirmed_text,
+            transcript_id=transcript_id,
+        ))
+
+        async def check() -> tuple[str, str, str]:
+            async with connection() as conn:
+                return await conn.fetchrow(
+                    """
+                    select report.description_original, report.input_mode::text,
+                           transcript.text_raw
+                    from reports as report
+                    join transcripts as transcript on transcript.report_id = report.id
+                    where report.id = $1
+                    """,
+                    report_id,
+                )
+
+        assert run(check()) == (confirmed_text, "voice_edited", raw_text)
     finally:
         run(cleanup(report_id))
 

@@ -105,7 +105,9 @@ describe("ReporterReportsPage", () => {
       .toBe("/en/learn");
     expect(screen.getAllByRole("link", { name: en["app.inbox"] })[0].getAttribute("href"))
       .toBe("/en/inbox");
-    expect(screen.queryByRole("link", { name: en["app.profile"] })).toBeNull();
+    expect(screen.getByRole("link", { name: en["app.profile"] }).getAttribute("href"))
+      .toBe("/en/profile");
+    expect(screen.getByRole("button", { name: en["app.signOut"] })).toBeTruthy();
     expect(screen.getByText(report.summary).closest("a")?.getAttribute("href"))
       .toBe("/en/report/report-id");
   });

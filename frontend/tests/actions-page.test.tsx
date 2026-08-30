@@ -31,6 +31,28 @@ vi.mock("../lib/notifications", () => ({
     items: [],
   })),
 }));
+vi.mock("../components/reports/VoiceConfirmedTextarea", () => ({
+  VoiceConfirmedTextarea: ({
+    label,
+    value,
+    onChange,
+    onTranscriptIdChange,
+  }: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    onTranscriptIdChange: (id: string | null) => void;
+  }) => (
+    <>
+      <label htmlFor="mock-completion">{label}</label>
+      <textarea id="mock-completion" value={value} onChange={(event) => onChange(event.target.value)} />
+      <button type="button" onClick={() => {
+        onChange("Lower anchor replaced by voice.");
+        onTranscriptIdChange("transcript-id");
+      }}>mock voice completion</button>
+    </>
+  ),
+}));
 vi.mock("../lib/alerts", () => ({ listAlerts: vi.fn(async () => []) }));
 vi.mock("../lib/supabase/browser", () => ({
   createClient: () => ({
@@ -173,5 +195,27 @@ describe("ActionsPage", () => {
 
     expect(await screen.findAllByText(zh["action.list.title"])).toHaveLength(2);
     expect(screen.getByText(zh["action.list.emptyTitle"])).toBeTruthy();
+  });
+
+  it("submits the editable voice completion note with transcript evidence", async () => {
+    vi.mocked(listOpenActions)
+      .mockResolvedValueOnce([returnedAction])
+      .mockResolvedValueOnce([]);
+    renderActions();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: en["work.submit.again"] }));
+    await user.click(screen.getByRole("button", { name: "mock voice completion" }));
+    await user.click(screen.getByRole("button", { name: en["work.submit.send"] }));
+
+    await waitFor(() => expect(submitActionEvidence).toHaveBeenCalledWith(
+      returnedAction.id,
+      returnedAction.action_id,
+      {
+        completed_note: "Lower anchor replaced by voice.",
+        media_ids: [],
+        transcript_id: "transcript-id",
+      },
+      "test-token",
+    ));
   });
 });

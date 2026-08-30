@@ -13,9 +13,9 @@ import pytest
 
 from app.api import reports as reports_api
 from app.api.reports import AssignmentRequest, ReviewRequest, TransitionRequest
-from app.domain.enums import ActorType, CaseRole, ReportStatus, ReviewDecision, Role
+from app.domain.enums import ActorType, CaseRole, InputMode, ReportStatus, ReviewDecision, Role
 from app.domain.transitions import TRANSITIONS
-from app.services.report_service import Actor
+from app.services.report_service import Actor, input_mode_for_submission
 from app.services.review_service import ReviewError, ReviewResult, review_report
 
 REPORT_ID = UUID("10000000-0000-0000-0000-000000000001")
@@ -381,10 +381,13 @@ def test_successful_submission_schedules_intake(
 ) -> None:
     configure_report_read(monkeypatch, status="draft")
 
-    async def fake_transition(*_: object, **__: object) -> dict[str, object]:
+    captured: dict[str, object] = {}
+
+    async def fake_submit(report_id: UUID, actor: Actor, **values: object) -> dict[str, object]:
+        captured.update({"report_id": report_id, "actor": actor, **values})
         return {"id": REPORT_ID, "status": "submitted"}
 
-    monkeypatch.setattr(reports_api, "transition_report", fake_transition)
+    monkeypatch.setattr(reports_api, "submit_report", fake_submit)
     monkeypatch.setattr(
         reports_api,
         "current_request_id",
@@ -395,7 +398,10 @@ def test_successful_submission_schedules_intake(
     asyncio.run(
         reports_api.post_transition(
             REPORT_ID,
-            TransitionRequest(target=ReportStatus.SUBMITTED),
+            TransitionRequest(
+                target=ReportStatus.SUBMITTED,
+                confirmed_text="Confirmed hazard description",
+            ),
             background_tasks,
             Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
         )
@@ -404,6 +410,24 @@ def test_successful_submission_schedules_intake(
     assert len(background_tasks.tasks) == 1
     assert background_tasks.tasks[0].func is reports_api.run_intake
     assert background_tasks.tasks[0].args == (REPORT_ID, "request-submit")
+    assert captured["confirmed_text"] == "Confirmed hazard description"
+    assert captured["transcript_id"] is None
+
+
+@pytest.mark.parametrize(
+    ("confirmed_text", "raw_transcript", "expected"),
+    [
+        ("Typed report", None, InputMode.TYPED),
+        ("六楼边缘没有护栏", "六楼边缘没有护栏", InputMode.VOICE),
+        ("六楼边缘没有防护栏", "六楼边缘没有护栏", InputMode.VOICE_EDITED),
+    ],
+)
+def test_input_mode_is_computed_from_server_owned_transcript_evidence(
+    confirmed_text: str,
+    raw_transcript: str | None,
+    expected: InputMode,
+) -> None:
+    assert input_mode_for_submission(confirmed_text, raw_transcript) is expected
 
 
 def test_answer_endpoint_schedules_intake_after_round_completion(
@@ -419,7 +443,10 @@ def test_answer_endpoint_schedules_intake_after_round_completion(
         }
         rerun = True
 
-    async def fake_answer(*_: object, **__: object) -> StoredAnswer:
+    captured: list[object] = []
+
+    async def fake_answer(*values: object, **__: object) -> StoredAnswer:
+        captured.extend(values)
         return StoredAnswer()
 
     monkeypatch.setattr(reports_api, "answer_clarification", fake_answer)
@@ -434,7 +461,10 @@ def test_answer_endpoint_schedules_intake_after_round_completion(
         reports_api.post_clarification_answer(
             REPORT_ID,
             clarification_id,
-            reports_api.ClarificationAnswerRequest(answer="Level 6 east edge"),
+            reports_api.ClarificationAnswerRequest(
+                answer="Level 6 east edge",
+                transcript_id=UUID("70000000-0000-0000-0000-000000000001"),
+            ),
             background_tasks,
             Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
         )
@@ -445,6 +475,7 @@ def test_answer_endpoint_schedules_intake_after_round_completion(
     assert len(background_tasks.tasks) == 1
     assert background_tasks.tasks[0].func is reports_api.run_intake
     assert background_tasks.tasks[0].args == (REPORT_ID, "request-clarification")
+    assert captured[-1] == UUID("70000000-0000-0000-0000-000000000001")
 
 
 def test_every_state_machine_event_has_action_and_timeline_catalogue_keys() -> None:

@@ -2,10 +2,6 @@
 
 import {
   BellIcon,
-  ClipboardDocumentListIcon,
-  HomeIcon,
-  IdentificationIcon,
-  LightBulbIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
@@ -19,9 +15,8 @@ import {
 } from "../../lib/notifications";
 import { createClient } from "../../lib/supabase/browser";
 import type { AppRole } from "../../lib/auth";
-import { useOperationsNavigation } from "../navigation/useOperationsNavigation";
-import { useReporterNavigation } from "../navigation/useReporterNavigation";
-import { AppShell, type AppShellNavItem } from "../ui/AppShell";
+import { useRoleNavigation } from "../navigation/useRoleNavigation";
+import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { Card } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
@@ -46,11 +41,7 @@ export function InboxPage({
   const t = useTranslations();
   const router = useRouter();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
-  const operationsNav = useOperationsNavigation(
-    locale,
-    role === "admin" ? "admin" : "reviewer",
-  );
-  const reporterNav = useReporterNavigation(locale);
+  const navItems = useRoleNavigation(locale, role);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -90,12 +81,6 @@ export function InboxPage({
     }
   }
 
-  const standardNav: AppShellNavItem[] = [
-    { href: `/${locale}`, label: t("app.home"), icon: <HomeIcon className="h-5 w-5" /> },
-    { href: `/${locale}/reports`, label: t("app.myReports"), icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
-    { href: `/${locale}/learn`, label: t("app.learn"), icon: <LightBulbIcon className="h-5 w-5" /> },
-    { href: `/${locale}/profile`, label: t("app.profile"), icon: <IdentificationIcon className="h-5 w-5" /> },
-  ];
   const reviewerSurface = role === "reviewer" || role === "admin";
 
   return (
@@ -108,11 +93,7 @@ export function InboxPage({
       pollStatus
       showUrgentAlerts={reviewerSurface}
       alertsHref={`/${locale}/alerts`}
-      navItems={reviewerSurface
-        ? operationsNav
-        : role === "reporter"
-          ? reporterNav
-          : standardNav}
+      navItems={navItems}
       activeHref={`/${locale}/inbox`}
       languageSwitch={(
         <LanguageSwitch

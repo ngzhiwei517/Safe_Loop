@@ -55,6 +55,38 @@ function expand(flat: Record<string, string>): AbstractIntlMessages {
 }
 
 const metrics: MetricsSummary = {
+  report_count: 20,
+  voice_report_count: 8,
+  voice_report_share: 0.4,
+  transcript_accepted_unedited_rate: 0.625,
+  median_voice_edit_distance: 1,
+  transcription_attempt_count: 12,
+  transcription_failure_count: 2,
+  transcription_failure_rate: 1 / 6,
+  voice_by_detected_locale: [
+    {
+      detected_locale: "zh-CN",
+      voice_report_count: 5,
+      voice_unedited_count: 3,
+      voice_edited_count: 2,
+      transcript_accepted_unedited_rate: 0.6,
+      median_edit_distance: 1,
+      transcription_attempt_count: 7,
+      transcription_failure_count: 1,
+      transcription_failure_rate: 1 / 7,
+    },
+    {
+      detected_locale: "en-SG",
+      voice_report_count: 3,
+      voice_unedited_count: 2,
+      voice_edited_count: 1,
+      transcript_accepted_unedited_rate: 2 / 3,
+      median_edit_distance: 1,
+      transcription_attempt_count: 5,
+      transcription_failure_count: 1,
+      transcription_failure_rate: 0.2,
+    },
+  ],
   open_by_status: { under_review: 3, action_assigned: 2 },
   overdue_count: 1,
   rework_rate: 0.5,
@@ -144,6 +176,9 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByText(en["dashboard.openCases"])).toBeTruthy();
+    expect(screen.getByText(en["dashboard.voiceQuality"])).toBeTruthy();
+    expect(screen.getByText("zh-CN")).toBeTruthy();
+    expect(screen.getByText("en-SG")).toBeTruthy();
     expect(
       screen.getAllByText(formatPercent(0.5, defaultLocale)).length,
     ).toBeGreaterThan(0);

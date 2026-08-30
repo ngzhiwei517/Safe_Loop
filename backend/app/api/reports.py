@@ -16,7 +16,6 @@ from app.api.rate_limits import enforce_rate_limit
 from app.config import get_settings
 from app.domain.enums import (
     CaseRole,
-    InputMode,
     MediaPhase,
     ReportStatus,
     ReviewDecision,
@@ -44,10 +43,12 @@ from app.services.report_service import (
     Actor,
     ReportDraftError,
     ReportListError,
+    ReportSubmissionError,
     create_report,
     get_report,
     get_timeline,
     list_reports,
+    submit_report,
     transition_report,
     update_draft_report,
 )
@@ -63,7 +64,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 class CreateReportRequest(BaseModel):
     """Fields needed to create a draft observation."""
 
-    description_original: str = Field(min_length=1)
+    description_original: str = Field(default="", max_length=4000)
     lang_original: str = "en"
     urgency: str = "medium"
     location_text: str | None = None
@@ -71,7 +72,6 @@ class CreateReportRequest(BaseModel):
     level_or_zone: str | None = None
     grid_ref: str | None = None
     is_confidential: bool = False
-    input_mode: InputMode = InputMode.TYPED
 
 
 class TransitionRequest(BaseModel):
@@ -80,6 +80,8 @@ class TransitionRequest(BaseModel):
     target: ReportStatus
     reason: str | None = None
     metadata: dict[str, Any] | None = None
+    confirmed_text: str | None = Field(default=None, max_length=4000)
+    transcript_id: UUID | None = None
 
 
 class RegisterMediaRequest(BaseModel):
@@ -118,10 +120,14 @@ class ActionSubmitRequest(BaseModel):
 
     completed_note: str | None = Field(default=None, max_length=4000)
     media_ids: list[UUID] = Field(default_factory=list, max_length=10)
+    transcript_id: UUID | None = None
 
 
 class VerifyRequest(BaseModel):
     """Record one human inspection and any deadline for the next rework cycle."""
+
+    # Deliberately typed-only: reviewer decisions, reasons, and verification notes
+    # must remain conscious human acts. Do not add voice transcription here.
 
     passed: bool
     checklist: dict[str, object] | list[object] | None = None
@@ -134,6 +140,7 @@ class ClarificationAnswerRequest(BaseModel):
     """Carry reporter-supplied text for one pending clarification."""
 
     answer: str = Field(max_length=4000)
+    transcript_id: UUID | None = None
 
 
 _REVIEW_DECISION_BY_EVENT = {
@@ -160,6 +167,22 @@ def transition_error(error: TransitionError) -> HTTPException:
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        {"code": error.code, "message": error.message},
+    )
+
+
+def submission_error(error: ReportSubmissionError) -> HTTPException:
+    """Map confirmation failures without exposing transcript text."""
+    code_status = {
+        "report_not_found": status.HTTP_404_NOT_FOUND,
+        "submission_actor_forbidden": status.HTTP_403_FORBIDDEN,
+        "submission_forbidden": status.HTTP_403_FORBIDDEN,
+        "report_not_submittable": status.HTTP_409_CONFLICT,
+        "confirmed_text_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "transcript_not_found": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    }
+    return HTTPException(
+        code_status.get(error.code, status.HTTP_422_UNPROCESSABLE_ENTITY),
         {"code": error.code, "message": error.message},
     )
 
@@ -216,6 +239,7 @@ def action_error(error: ActionError) -> HTTPException:
         "action_not_submittable": status.HTTP_409_CONFLICT,
         "action_evidence_required": status.HTTP_422_UNPROCESSABLE_ENTITY,
         "action_media_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "action_transcript_not_found": status.HTTP_422_UNPROCESSABLE_ENTITY,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -304,6 +328,7 @@ def clarification_error(error: ClarificationError) -> HTTPException:
         "report_not_clarifying": status.HTTP_409_CONFLICT,
         "clarification_already_answered": status.HTTP_409_CONFLICT,
         "clarification_round_invalid": status.HTTP_409_CONFLICT,
+        "clarification_transcript_not_found": status.HTTP_422_UNPROCESSABLE_ENTITY,
     }
     return HTTPException(
         code_status.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
@@ -423,7 +448,6 @@ async def post_report(payload: CreateReportRequest, actor: Actor = Depends(curre
         level_or_zone=payload.level_or_zone,
         grid_ref=payload.grid_ref,
         is_confidential=payload.is_confidential,
-        input_mode=payload.input_mode,
     )
     return {"id": report_id}
 
@@ -448,7 +472,6 @@ async def patch_report_draft(
             level_or_zone=payload.level_or_zone,
             grid_ref=payload.grid_ref,
             is_confidential=payload.is_confidential,
-            input_mode=payload.input_mode,
         )
     except ReportDraftError as error:
         raise report_draft_error(error) from error
@@ -585,6 +608,7 @@ async def post_action_submission(
             actor,
             completed_note=payload.completed_note,
             media_ids=payload.media_ids,
+            transcript_id=payload.transcript_id,
         )
     except ActionError as error:
         raise action_error(error) from error
@@ -715,17 +739,27 @@ async def post_transition(
         raise HTTPException(404, {"code": "report_not_found", "message": "report does not exist"})
     try:
         assert_report_readable(existing_report, actor)
-        report = await transition_report(
-            report_id,
-            payload.target,
-            actor,
-            reason=payload.reason,
-            metadata=payload.metadata,
-        )
+        if payload.target is ReportStatus.SUBMITTED:
+            report = await submit_report(
+                report_id,
+                actor,
+                confirmed_text=payload.confirmed_text or "",
+                transcript_id=payload.transcript_id,
+            )
+        else:
+            report = await transition_report(
+                report_id,
+                payload.target,
+                actor,
+                reason=payload.reason,
+                metadata=payload.metadata,
+            )
     except MediaError as error:
         raise media_error(error) from error
     except TransitionError as error:
         raise transition_error(error) from error
+    except ReportSubmissionError as error:
+        raise submission_error(error) from error
     if payload.target is ReportStatus.SUBMITTED:
         background_tasks.add_task(run_intake, report_id, current_request_id())
     return cast(dict[str, object], jsonable_encoder(dict(report)))
@@ -746,6 +780,7 @@ async def post_clarification_answer(
             clarification_id,
             actor,
             payload.answer,
+            payload.transcript_id,
         )
     except ClarificationError as error:
         raise clarification_error(error) from error

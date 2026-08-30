@@ -22,6 +22,7 @@ from app.services.report_service import Actor
 REPORT_ID = UUID("10000000-0000-0000-0000-000000000001")
 ACTION_ID = UUID("50000000-0000-0000-0000-000000000001")
 MEDIA_ID = UUID("60000000-0000-0000-0000-000000000001")
+TRANSCRIPT_ID = UUID("70000000-0000-0000-0000-000000000001")
 RESPONSIBLE_ID = UUID("00000000-0000-0000-0000-000000000004")
 REPORTER_ID = UUID("00000000-0000-0000-0000-000000000001")
 
@@ -93,6 +94,7 @@ def test_action_endpoint_passes_registered_media_ids_to_atomic_service(
             ActionSubmitRequest(
                 completed_note="Guardrail secured.",
                 media_ids=[MEDIA_ID],
+                transcript_id=TRANSCRIPT_ID,
             ),
             actor,
         )
@@ -106,4 +108,5 @@ def test_action_endpoint_passes_registered_media_ids_to_atomic_service(
         "actor": actor,
         "completed_note": "Guardrail secured.",
         "media_ids": [MEDIA_ID],
+        "transcript_id": TRANSCRIPT_ID,
     }

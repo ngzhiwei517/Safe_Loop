@@ -27,7 +27,12 @@ from app.domain.enums import ActorType, ReportStatus, Role, ValidationStatus
 from app.rag.retrieve import retrieve_chunks
 from app.observability import bind_request_id, log_event, track_exception
 from app.services.draft_service import append_draft
-from app.services.report_service import Actor, transition_report
+from app.services.report_service import (
+    Actor,
+    TranscriptConfirmationError,
+    confirm_transcript_text,
+    transition_report,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -366,6 +371,7 @@ async def answer_clarification(
     clarification_id: UUID,
     actor: Actor,
     answer: str,
+    transcript_id: UUID | None = None,
 ) -> ClarificationAnswer:
     """Store one reporter answer and complete its round exactly once."""
     if (
@@ -436,6 +442,20 @@ async def answer_clarification(
                     "clarification_round_invalid",
                     "clarification is not in the active round",
                 )
+
+            try:
+                await confirm_transcript_text(
+                    conn,
+                    report_id=report_id,
+                    transcript_id=transcript_id,
+                    confirmed_text=answer.strip(),
+                    context="clarification_answer",
+                    context_id=clarification_id,
+                )
+            except TranscriptConfirmationError as error:
+                raise ClarificationError(
+                    "clarification_transcript_not_found", str(error)
+                ) from error
 
             stored = await conn.fetchrow(
                 """

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "mandarin-guardrail",
+    "file": "audio/mandarin-guardrail.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "zh-CN",
+    "reference": "六楼模板边缘没有护栏",
+    "category": "mandarin"
+  },
+  {
+    "id": "mandarin-floor-opening",
+    "file": "audio/mandarin-floor-opening.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "zh-CN",
+    "reference": "楼板开口没有盖板旁边只有警示带",
+    "category": "mandarin"
+  },
+  {
+    "id": "mandarin-scaffold",
+    "file": "audio/mandarin-scaffold.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "zh-CN",
+    "reference": "七楼脚手架踏板松动",
+    "category": "mandarin"
+  },
+  {
+    "id": "english-guardrail",
+    "file": "audio/english-guardrail.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "en-SG",
+    "reference": "Level six slab edge has no guardrail",
+    "category": "english"
+  },
+  {
+    "id": "english-fire-exit",
+    "file": "audio/english-fire-exit.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "en-SG",
+    "reference": "Boxes are blocking the fire exit corridor",
+    "category": "english"
+  },
+  {
+    "id": "english-water-leak",
+    "file": "audio/english-water-leak.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "en-SG",
+    "reference": "Water is leaking across the walkway",
+    "category": "english"
+  },
+  {
+    "id": "code-switch-formwork",
+    "file": "audio/code-switch-formwork.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "zh-CN",
+    "reference": "六楼 formwork 边缘没有 guardrail",
+    "category": "code-switched"
+  },
+  {
+    "id": "code-switch-cable",
+    "file": "audio/code-switch-cable.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "zh-CN",
+    "reference": "配电箱旁的 electrical cable 外皮破损",
+    "category": "code-switched"
+  },
+  {
+    "id": "noisy-mandarin-welding",
+    "file": "audio/noisy-mandarin-welding.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "zh-CN",
+    "reference": "焊接火花落在纸箱上",
+    "category": "noisy-mandarin"
+  },
+  {
+    "id": "noisy-english-scaffold",
+    "file": "audio/noisy-english-scaffold.wav",
+    "mime_type": "audio/wav",
+    "hint_locale": "en-SG",
+    "reference": "The scaffold base is sinking near the road",
+    "category": "noisy-english"
+  }
+]

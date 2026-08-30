@@ -13,6 +13,7 @@ import {
   isLocale,
   locales,
 } from "../../lib/locales";
+import { isAudioMimeType, isImageMimeType } from "../../lib/media";
 import {
   getReport,
   getTimeline,
@@ -25,6 +26,7 @@ import {
   type Urgency,
 } from "../../lib/reports";
 import { createClient } from "../../lib/supabase/browser";
+import { SignOutButton } from "../auth/SignOutButton";
 import { AiBlock } from "../ui/AiBlock";
 import { Banner } from "../ui/Banner";
 import {
@@ -135,6 +137,8 @@ export function ReviewDecisionPage({
   id: string;
   requestedLocale: string;
 }) {
+  // Reviewer decisions and reasons are deliberate accountable acts. Keep every
+  // field on this surface typed-only; do not add VoiceConfirmedTextarea here.
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
   const [report, setReport] = useState<ReportDetail | null>(null);
@@ -298,6 +302,8 @@ export function ReviewDecisionPage({
   }
 
   const decisions = report.available_transitions.filter(isReviewTransition);
+  const photoMedia = report.media.filter((item) => isImageMimeType(item.mime_type));
+  const audioMedia = report.media.filter((item) => isAudioMimeType(item.mime_type));
   const timelineEvents = timeline.map((entry) => ({
     id: entry.id,
     title: t(`timeline.event.${entry.event}`),
@@ -328,14 +334,17 @@ export function ReviewDecisionPage({
         <h1 className="min-w-0 truncate text-center text-xl font-bold">
           {report.human_ref}
         </h1>
-        <LanguageSwitch
-          current={locale}
-          label={t("app.language")}
-          options={[
-            { value: locales[0], label: t("app.languageEnglish") },
-            { value: locales[1], label: t("app.languageChinese") },
-          ]}
-        />
+        <div className="flex items-center gap-2">
+          <LanguageSwitch
+            current={locale}
+            label={t("app.language")}
+            options={[
+              { value: locales[0], label: t("app.languageEnglish") },
+              { value: locales[1], label: t("app.languageChinese") },
+            ]}
+          />
+          <SignOutButton variant="icon" />
+        </div>
       </header>
 
       <div className="space-y-4">
@@ -363,15 +372,32 @@ export function ReviewDecisionPage({
           </p>
         </Card>
 
-        {report.media.length > 0 && (
+        {photoMedia.length > 0 && (
           <Card className="space-y-3">
             <h2 className="text-xl font-bold">{t("report.media.photos")}</h2>
             <PhotoStrip
-              photos={report.media.map((item) => ({
+              photos={photoMedia.map((item) => ({
                 src: item.signed_url,
                 alt: item.caption?.trim() || t("report.media.photoAlt"),
               }))}
             />
+          </Card>
+        )}
+
+        {audioMedia.length > 0 && (
+          <Card className="space-y-3">
+            <h2 className="text-xl font-bold">{t("report.media.audio")}</h2>
+            {audioMedia.map((item) => (
+              <audio
+                key={item.id}
+                className="w-full"
+                controls
+                preload="metadata"
+                src={item.signed_url}
+              >
+                {t("report.voice.playbackUnsupported")}
+              </audio>
+            ))}
           </Card>
         )}
 

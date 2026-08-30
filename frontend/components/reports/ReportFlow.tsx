@@ -41,6 +41,7 @@ import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
 import { Card } from "../ui/Card";
 import { Field } from "../ui/Field";
+import { VoiceConfirmedTextarea } from "./VoiceConfirmedTextarea";
 
 type FlowStep = "capture" | "question" | "urgent" | "review";
 type DangerAnswer = "yes" | "no" | null;
@@ -68,6 +69,8 @@ export function ReportFlow() {
   const [alertFailed, setAlertFailed] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [transcriptId, setTranscriptId] = useState<string | null>(null);
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
   const [missingFields, setMissingFields] = useState<RequiredReportField[]>([]);
@@ -122,8 +125,18 @@ export function ReportFlow() {
       level_or_zone: levelOrZone.trim() || null,
       grid_ref: gridRef.trim() || null,
       is_confidential: confidential,
-      input_mode: "typed",
     };
+  }
+
+  async function ensureVoiceDraft(): Promise<string> {
+    if (draftId) return draftId;
+    const {
+      data: { session },
+    } = await createClient().auth.getSession();
+    if (!session) throw new Error("session_required");
+    const draft = await createReportDraft(reportInput(), session.access_token);
+    setDraftId(draft.id);
+    return draft.id;
   }
 
   function clearMissingField(field: RequiredReportField, value: string) {
@@ -204,6 +217,7 @@ export function ReportFlow() {
           }
           : undefined,
         draftId ?? undefined,
+        transcriptId ?? undefined,
       );
       try {
         sessionStorage.setItem(
@@ -342,7 +356,7 @@ export function ReportFlow() {
                 onChange={selectPhoto}
               />
             </label>
-            <Field
+            <VoiceConfirmedTextarea
               id="capture-description"
               rows={5}
               label={t("report.new.requiredLabel", {
@@ -356,9 +370,14 @@ export function ReportFlow() {
                 ? t("report.new.validation.description")
                 : undefined}
               value={description}
-              onChange={(event) => {
-                setDescription(event.target.value);
-                clearMissingField("description", event.target.value);
+              locale={locale}
+              reportId={draftId ?? undefined}
+              ensureReportId={ensureVoiceDraft}
+              onTranscriptIdChange={setTranscriptId}
+              onProcessingChange={setVoiceProcessing}
+              onChange={(value) => {
+                setDescription(value);
+                clearMissingField("description", value);
               }}
             />
             <Field
@@ -409,6 +428,7 @@ export function ReportFlow() {
           )}
           <PrimaryButton
             label={t("report.new.continue")}
+            disabled={voiceProcessing}
             onClick={continueFromCapture}
           />
         </div>
@@ -499,7 +519,7 @@ export function ReportFlow() {
             <h2 className="text-2xl font-bold">
               {t("report.new.whatReported")}
             </h2>
-            <Field
+            <VoiceConfirmedTextarea
               id="report-description"
               rows={4}
               label={t("report.new.requiredLabel", {
@@ -510,9 +530,14 @@ export function ReportFlow() {
                 ? t("report.new.validation.description")
                 : undefined}
               value={description}
-              onChange={(event) => {
-                setDescription(event.target.value);
-                clearMissingField("description", event.target.value);
+              locale={locale}
+              reportId={draftId ?? undefined}
+              ensureReportId={ensureVoiceDraft}
+              onTranscriptIdChange={setTranscriptId}
+              onProcessingChange={setVoiceProcessing}
+              onChange={(value) => {
+                setDescription(value);
+                clearMissingField("description", value);
               }}
             />
             <Field
@@ -612,7 +637,7 @@ export function ReportFlow() {
                 ? t("report.new.submitting")
                 : t("report.new.submit")
             }
-            disabled={submitting}
+            disabled={submitting || voiceProcessing}
             onClick={() => void submit()}
           />
           {failed && (

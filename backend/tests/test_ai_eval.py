@@ -61,10 +61,15 @@ def test_stub_eval_clears_the_required_pass_rate_without_network() -> None:
 
 def test_vendor_sdk_is_isolated_to_the_real_provider_module() -> None:
     ai_root = Path(llm_provider.__file__).parent
+    approved_provider_modules = {
+        Path(llm_provider.__file__),
+        ai_root / "transcription.py",
+        ai_root / "live_transcription.py",
+    }
     offenders = [
         path
         for path in ai_root.rglob("*.py")
-        if path != Path(llm_provider.__file__)
+        if path not in approved_provider_modules
         and ("google.genai" in path.read_text(encoding="utf-8"))
     ]
 

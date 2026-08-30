@@ -3,10 +3,6 @@
 import {
   BellIcon,
   BookOpenIcon,
-  ClipboardDocumentListIcon,
-  HomeIcon,
-  IdentificationIcon,
-  LightBulbIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -16,9 +12,8 @@ import { listLearningBriefings, type LearningBriefing } from "../../lib/briefing
 import type { AppRole } from "../../lib/auth";
 import { defaultLocale, formatDate, isLocale, locales } from "../../lib/locales";
 import { createClient } from "../../lib/supabase/browser";
-import { useOperationsNavigation } from "../navigation/useOperationsNavigation";
-import { useReporterNavigation } from "../navigation/useReporterNavigation";
-import { AppShell, type AppShellNavItem } from "../ui/AppShell";
+import { useRoleNavigation } from "../navigation/useRoleNavigation";
+import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { Card } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
@@ -34,11 +29,7 @@ export function LearnPage({
 }) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
-  const operationsNav = useOperationsNavigation(
-    locale,
-    role === "admin" ? "admin" : "reviewer",
-  );
-  const reporterNav = useReporterNavigation(locale);
+  const navItems = useRoleNavigation(locale, role);
   const [briefings, setBriefings] = useState<LearningBriefing[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -60,12 +51,6 @@ export function LearnPage({
     void load();
   }, [load]);
 
-  const navItems: AppShellNavItem[] = [
-    { href: `/${locale}`, label: t("app.home"), icon: <HomeIcon className="h-5 w-5" /> },
-    { href: `/${locale}/reports`, label: t("app.myReports"), icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
-    { href: `/${locale}/learn`, label: t("app.learn"), icon: <LightBulbIcon className="h-5 w-5" /> },
-    { href: `/${locale}/profile`, label: t("app.profile"), icon: <IdentificationIcon className="h-5 w-5" /> },
-  ];
   const reviewerSurface = role === "reviewer" || role === "admin";
 
   return (
@@ -78,11 +63,7 @@ export function LearnPage({
       pollStatus
       showUrgentAlerts={reviewerSurface}
       alertsHref={`/${locale}/alerts`}
-      navItems={reviewerSurface
-        ? operationsNav
-        : role === "reporter"
-          ? reporterNav
-          : navItems}
+      navItems={navItems}
       activeHref={`/${locale}/learn`}
       languageSwitch={(
         <LanguageSwitch

@@ -34,7 +34,7 @@ def test_deep_health_reports_each_component_and_overall_failure() -> None:
     assert result["checks"]["provider"]["ok"] is True
 
 
-def test_storage_health_checks_both_private_buckets_without_network(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_storage_health_checks_private_buckets_without_network(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("SUPABASE_URL", "https://project.example")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-test-key")
     get_settings.cache_clear()
@@ -56,6 +56,7 @@ def test_storage_health_checks_both_private_buckets_without_network(monkeypatch)
 
     assert paths == [
         "/storage/v1/bucket/report-media",
+        "/storage/v1/bucket/report-audio",
         "/storage/v1/bucket/documents",
     ]
 

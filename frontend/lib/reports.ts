@@ -1,6 +1,10 @@
 import { apiFetch } from "./api";
 import type { Locale } from "./locales";
-import { uploadReportPhoto, type MediaPhase, type ReportPhotoUpload } from "./media";
+import {
+  uploadReportPhoto,
+  type MediaPhase,
+  type ReportPhotoUpload,
+} from "./media";
 import { reportStatus, type ReportStatus } from "./stateMachine";
 
 export const urgencyLevels = ["low", "medium", "high", "critical"] as const;
@@ -14,7 +18,6 @@ export type NewReportInput = {
   level_or_zone: string | null;
   grid_ref: string | null;
   is_confidential: boolean;
-  input_mode: "typed";
 };
 
 type CreatedReport = { id: string };
@@ -27,6 +30,7 @@ export type ReportMedia = {
   phase: MediaPhase;
   caption: string | null;
   corrective_action_id?: string | null;
+  retention_until?: string | null;
   created_at?: string;
   signed_url: string;
   signed_url_expires_at: string;
@@ -256,6 +260,7 @@ export async function fileReport(
   accessToken: string,
   photo?: ReportPhotoUpload,
   existingDraftId?: string,
+  transcriptId?: string,
 ): Promise<SubmittedReport> {
   const created = existingDraftId
     ? await apiFetch<CreatedReport>(`/reports/${existingDraftId}`, accessToken, {
@@ -272,7 +277,11 @@ export async function fileReport(
   }
   return apiFetch<SubmittedReport>(`/reports/${created.id}/transition`, accessToken, {
     method: "POST",
-    body: JSON.stringify({ target: reportStatus.submitted }),
+    body: JSON.stringify({
+      target: reportStatus.submitted,
+      confirmed_text: input.description_original,
+      transcript_id: transcriptId,
+    }),
   });
 }
 
@@ -312,13 +321,14 @@ export function answerClarification(
   clarificationId: string,
   answer: string,
   accessToken: string,
+  transcriptId?: string,
 ): Promise<{ id: string; report_id: string; answered_at: string; round_complete: boolean }> {
   return apiFetch(
     `/reports/${reportId}/clarifications/${clarificationId}/answer`,
     accessToken,
     {
       method: "POST",
-      body: JSON.stringify({ answer }),
+      body: JSON.stringify({ answer, transcript_id: transcriptId }),
     },
   );
 }

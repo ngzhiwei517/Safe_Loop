@@ -168,6 +168,40 @@ export function DashboardPage({
             </div>
 
             <div className="space-y-3">
+              <div>
+                <h2 className="text-base font-bold text-ink">{t("dashboard.voiceQuality")}</h2>
+                <p className="mt-1 text-sm text-inkMuted">{t("dashboard.voiceLocaleBasis")}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <MetricCard value={formatPercent(metrics.voice_report_share, locale)} label={t("dashboard.voiceReportShare")} />
+                <MetricCard
+                  value={metrics.transcript_accepted_unedited_rate === null ? t("dashboard.notAvailable") : formatPercent(metrics.transcript_accepted_unedited_rate, locale)}
+                  label={t("dashboard.voiceAcceptedRate")}
+                />
+                <MetricCard
+                  value={metrics.median_voice_edit_distance === null ? t("dashboard.notAvailable") : formatNumber(metrics.median_voice_edit_distance, locale)}
+                  label={t("dashboard.voiceMedianEditDistance")}
+                />
+                <MetricCard
+                  value={metrics.transcription_failure_rate === null ? t("dashboard.notAvailable") : formatPercent(metrics.transcription_failure_rate, locale)}
+                  label={t("dashboard.voiceFailureRate")}
+                  tone={(metrics.transcription_failure_rate ?? 0) > 0 ? "danger" : "success"}
+                />
+              </div>
+              {metrics.voice_by_detected_locale.map((item) => (
+                <Card className="space-y-3" key={item.detected_locale}>
+                  <h3 className="text-base font-bold text-primaryStrong">{item.detected_locale}</h3>
+                  <dl className="grid grid-cols-2 gap-3 text-sm">
+                    <div><dt className="text-inkMuted">{t("dashboard.voiceAcceptedRate")}</dt><dd className="font-bold text-ink">{item.transcript_accepted_unedited_rate === null ? t("dashboard.notAvailable") : formatPercent(item.transcript_accepted_unedited_rate, locale)}</dd></div>
+                    <div><dt className="text-inkMuted">{t("dashboard.voiceFailureRate")}</dt><dd className="font-bold text-ink">{item.transcription_failure_rate === null ? t("dashboard.notAvailable") : formatPercent(item.transcription_failure_rate, locale)}</dd></div>
+                    <div><dt className="text-inkMuted">{t("dashboard.voiceMedianEditDistance")}</dt><dd className="font-bold text-ink">{item.median_edit_distance === null ? t("dashboard.notAvailable") : formatNumber(item.median_edit_distance, locale)}</dd></div>
+                    <div><dt className="text-inkMuted">{t("dashboard.voiceAttempts")}</dt><dd className="font-bold text-ink">{formatNumber(item.transcription_attempt_count, locale)}</dd></div>
+                  </dl>
+                </Card>
+              ))}
+            </div>
+
+            <div className="space-y-3">
               <h2 className="text-base font-bold text-ink">
                 {t("dashboard.learningOutcomes")}
               </h2>

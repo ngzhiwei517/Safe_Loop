@@ -43,20 +43,57 @@ MediaSigner = Callable[[str, MediaPolicy], Awaitable[str]]
 MediaBatchSigner = Callable[[list[str], MediaPolicy], Awaitable[dict[str, str]]]
 
 
-def media_policy(settings: Settings | None = None) -> MediaPolicy:
-    """Build the media policy from configuration so Phase 7 can extend it safely."""
-    configured = settings or get_settings()
-    allowed = frozenset(
-        value.strip().lower()
-        for value in configured.report_media_allowed_mime_types.split(",")
-        if value.strip()
+def _configured_mime_types(value: str) -> frozenset[str]:
+    return frozenset(
+        item.strip().lower()
+        for item in value.split(",")
+        if item.strip()
     )
+
+
+def media_policy(settings: Settings | None = None) -> MediaPolicy:
+    """Build the private photo policy from runtime configuration."""
+    configured = settings or get_settings()
     return MediaPolicy(
         bucket=configured.report_media_bucket,
-        allowed_mime_types=allowed,
+        allowed_mime_types=_configured_mime_types(
+            configured.report_media_allowed_mime_types
+        ),
         max_bytes=configured.report_media_max_bytes,
         signed_url_ttl_seconds=configured.report_media_signed_url_ttl_seconds,
     )
+
+
+def audio_media_policy(settings: Settings | None = None) -> MediaPolicy:
+    """Build the private audio policy without widening the photo bucket."""
+    configured = settings or get_settings()
+    return MediaPolicy(
+        bucket=configured.report_audio_bucket,
+        allowed_mime_types=_configured_mime_types(
+            configured.report_audio_allowed_mime_types
+        ),
+        max_bytes=configured.report_audio_max_bytes,
+        signed_url_ttl_seconds=configured.report_media_signed_url_ttl_seconds,
+    )
+
+
+def media_policy_for_mime_type(
+    mime_type: str,
+    settings: Settings | None = None,
+) -> MediaPolicy:
+    """Route audio to its own private bucket while keeping one media endpoint."""
+    configured = settings or get_settings()
+    normalized = mime_type.strip().lower().split(";", 1)[0]
+    audio_policy = audio_media_policy(configured)
+    if normalized in audio_policy.allowed_mime_types:
+        return audio_policy
+    return media_policy(configured)
+
+
+def is_audio_mime_type(mime_type: str, settings: Settings | None = None) -> bool:
+    configured = settings or get_settings()
+    normalized = mime_type.strip().lower().split(";", 1)[0]
+    return normalized in audio_media_policy(configured).allowed_mime_types
 
 
 def validate_media_registration(
@@ -147,7 +184,11 @@ async def register_report_media(
     caption: str | None,
 ) -> asyncpg.Record:
     """Register only an already-uploaded object whose database metadata is trustworthy."""
-    policy = media_policy()
+    settings = get_settings()
+    requested_mime_type = mime_type.strip().lower().split(";", 1)[0]
+    policy = media_policy_for_mime_type(requested_mime_type, settings)
+    if requested_mime_type not in policy.allowed_mime_types:
+        raise MediaError("media_type_not_allowed", "requested MIME type is not allowed")
     async with connection() as conn:
         async with conn.transaction():
             report = await conn.fetchrow(
@@ -195,18 +236,26 @@ async def register_report_media(
                 reporter_id=report["reporter_id"],
                 actor=actor,
                 storage_path=storage_path,
-                requested_mime_type=mime_type,
+                requested_mime_type=requested_mime_type,
                 object_mime_type=object_mime_type,
                 object_size=object_size,
                 phase=phase,
                 evidence_allowed=report["evidence_allowed"],
                 policy=policy,
             )
+            retention_until = (
+                datetime.now(timezone.utc)
+                + timedelta(days=settings.report_audio_retention_days)
+                if is_audio_mime_type(normalized_mime_type, settings)
+                else None
+            )
             try:
                 media = await conn.fetchrow(
                     """
-                    INSERT INTO report_media (report_id, storage_path, mime_type, phase, caption)
-                    VALUES ($1, $2, $3, $4::media_phase, $5)
+                    INSERT INTO report_media (
+                      report_id, storage_path, mime_type, phase, caption, retention_until
+                    )
+                    VALUES ($1, $2, $3, $4::media_phase, $5, $6)
                     RETURNING *
                     """,
                     report_id,
@@ -214,6 +263,7 @@ async def register_report_media(
                     normalized_mime_type,
                     phase.value,
                     caption,
+                    retention_until,
                 )
             except asyncpg.UniqueViolationError as error:
                 raise MediaError("media_already_registered", "storage object is already registered") from error
@@ -356,12 +406,11 @@ async def get_signed_report_media(
     signer: MediaSigner | None = None,
 ) -> list[dict[str, object]]:
     """Return private media with URLs that expire together after the configured TTL."""
-    policy = media_policy()
     async with connection() as conn:
         rows = await conn.fetch(
             """
             SELECT id, storage_path, mime_type, phase::text, caption,
-                   corrective_action_id, created_at
+                   corrective_action_id, retention_until, created_at
             FROM report_media WHERE report_id = $1 ORDER BY created_at, id
             """,
             report_id,
@@ -371,9 +420,17 @@ async def get_signed_report_media(
 
     active_signer = signer or create_signed_url
     signed_urls = await asyncio.gather(
-        *(active_signer(row["storage_path"], policy) for row in rows)
+        *(
+            active_signer(
+                row["storage_path"],
+                media_policy_for_mime_type(row["mime_type"]),
+            )
+            for row in rows
+        )
     )
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=policy.signed_url_ttl_seconds)
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        seconds=get_settings().report_media_signed_url_ttl_seconds
+    )
     return [
         {
             **dict(row),

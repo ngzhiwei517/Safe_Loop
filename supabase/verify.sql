@@ -20,6 +20,22 @@ begin
   insert into verify_results values ('report_media_private_bucket', coalesce(bucket_ok, false));
 end $$;
 
+do $$
+declare
+  bucket_ok boolean := false;
+begin
+  if to_regclass('storage.buckets') is not null then
+    execute $check$
+      select public is false
+        and file_size_limit = 26214400
+        and allowed_mime_types @> array['audio/webm', 'audio/mp4', 'audio/mpeg']::text[]
+        and array['audio/webm', 'audio/mp4', 'audio/mpeg']::text[] @> allowed_mime_types
+      from storage.buckets where id = 'report-audio'
+    $check$ into bucket_ok;
+  end if;
+  insert into verify_results values ('report_audio_private_bucket', coalesce(bucket_ok, false));
+end $$;
+
 insert into reports (reporter_id, description_original)
 values ('00000000-0000-0000-0000-000000000001', 'verification fixture');
 insert into verify_report select id from reports order by created_at desc limit 1;
@@ -34,6 +50,74 @@ begin
   insert into verify_results values ('ai_closure_guard', false);
 exception when insufficient_privilege then
   insert into verify_results values ('ai_closure_guard', true);
+end $$;
+
+insert into report_media (
+  report_id, storage_path, mime_type, phase, retention_until
+)
+values (
+  (select id from verify_report),
+  'verify/report/audio.webm',
+  'audio/webm',
+  'original',
+  now() + interval '90 days'
+);
+insert into transcripts (
+  media_id, report_id, provider, model, hint_locale, detected_locale, text_raw, duration_ms,
+  provider_ref, latency_ms
+)
+select id, report_id, 'stub', 'stub-transcription', 'en-SG', 'en-SG', 'verification transcript', 30000,
+       'stub-asr-verification', 12
+from report_media
+where report_id = (select id from verify_report)
+  and mime_type = 'audio/webm';
+insert into verify_results values (
+  'transcript_provider_metadata',
+  exists (
+    select 1 from transcripts
+    where media_id in (
+      select id from report_media where report_id = (select id from verify_report)
+    )
+      and provider_ref = 'stub-asr-verification'
+      and latency_ms = 12
+  )
+);
+insert into transcription_attempts (
+  media_id, report_id, transcript_id, provider, model, hint_locale,
+  detected_locale, confidence, usable, latency_ms
+)
+select media.id, media.report_id, transcript.id, 'stub', 'stub-transcription',
+       'en-SG', 'en-SG', 0.9, true, 12
+from report_media media
+join transcripts transcript on transcript.media_id = media.id
+where media.report_id = (select id from verify_report)
+limit 1;
+insert into transcript_confirmations (
+  transcript_id, report_id, context, context_id, confirmed_text, input_mode
+)
+select transcript.id, media.report_id, 'report_description', media.report_id,
+       transcript.text_raw, 'voice'
+from report_media media
+join transcripts transcript on transcript.media_id = media.id
+where media.report_id = (select id from verify_report)
+limit 1;
+do $$
+begin
+  update transcription_attempts set usable = false
+  where report_id = (select id from verify_report);
+  insert into verify_results values ('voice_telemetry_append_only', false);
+exception when insufficient_privilege then
+  insert into verify_results values ('voice_telemetry_append_only', true);
+end $$;
+do $$
+begin
+  update transcripts set text_raw = 'changed'
+  where media_id in (
+    select id from report_media where report_id = (select id from verify_report)
+  );
+  insert into verify_results values ('transcripts_append_only', false);
+exception when insufficient_privilege then
+  insert into verify_results values ('transcripts_append_only', true);
 end $$;
 select set_config('safeloop.actor_type', 'human', true);
 

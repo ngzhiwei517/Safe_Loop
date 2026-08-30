@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     vertex_project_id: str = ""
     vertex_location: str = DEFAULT_VERTEX_LOCATION
     vertex_model: str = "gemini-3.5-flash"
+    vertex_transcription_model: str = "gemini-3.5-flash"
+    vertex_live_transcription_model: str = "gemini-3.5-transcribe-live-preview"
+    vertex_live_transcription_location: str = "global"
+    live_transcription_enabled: bool = False
+    live_transcription_ticket_ttl_seconds: int = Field(default=45, ge=10, le=300)
     vertex_embedding_model: str = "gemini-embedding-001"
     vertex_max_output_tokens: int = Field(default=4096, ge=256)
     vertex_input_cost_per_million_usd: float = Field(default=1.65, ge=0.0)
@@ -37,6 +42,10 @@ class Settings(BaseSettings):
     report_media_allowed_mime_types: str = "image/jpeg,image/png,image/webp"
     report_media_max_bytes: int = 10 * 1024 * 1024
     report_media_signed_url_ttl_seconds: int = 600
+    report_audio_bucket: str = "report-audio"
+    report_audio_allowed_mime_types: str = "audio/webm,audio/mp4,audio/mpeg"
+    report_audio_max_bytes: int = 25 * 1024 * 1024
+    report_audio_retention_days: int = Field(default=90, ge=1)
     documents_bucket: str = "documents"
     documents_max_bytes: int = 25 * 1024 * 1024
     alert_escalate_minutes: int = 5
@@ -44,6 +53,8 @@ class Settings(BaseSettings):
     quiz_rate_limit_per_minute: int = Field(default=30, ge=1, le=300)
     report_submission_rate_limit_per_minute: int = Field(default=10, ge=1, le=300)
     document_upload_rate_limit_per_minute: int = Field(default=5, ge=1, le=100)
+    transcription_rate_limit_per_minute: int = Field(default=10, ge=1, le=100)
+    transcription_confidence_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
     deep_health_timeout_seconds: float = Field(default=5.0, gt=0.0, le=30.0)
     slow_request_ms: int = Field(default=300, ge=1)
     log_level: str = "INFO"

@@ -3,13 +3,10 @@
 import {
   ArrowLeftIcon,
   BellIcon,
-  BookOpenIcon,
   CameraIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  IdentificationIcon,
   MapPinIcon,
-  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
 import { type ChangeEvent, useCallback, useEffect, useState } from "react";
@@ -34,14 +31,15 @@ import {
   uploadReportPhoto,
 } from "../../lib/media";
 import { createClient } from "../../lib/supabase/browser";
+import { useRoleNavigation } from "../navigation/useRoleNavigation";
 import { AppShell } from "../ui/AppShell";
 import { Banner } from "../ui/Banner";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
 import { Card } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { Field } from "../ui/Field";
 import { LanguageSwitch } from "../ui/LanguageSwitch";
 import { PhotoStrip } from "../ui/PhotoStrip";
+import { VoiceConfirmedTextarea } from "../reports/VoiceConfirmedTextarea";
 
 const actionErrorKeys: Record<string, string> = {
   action_actor_forbidden: "error.action_actor_forbidden",
@@ -50,6 +48,7 @@ const actionErrorKeys: Record<string, string> = {
   action_not_submittable: "error.action_not_submittable",
   action_evidence_required: "error.action_evidence_required",
   action_media_invalid: "error.action_media_invalid",
+  action_transcript_not_found: "error.action_transcript_not_found",
   media_type_not_allowed: "error.media_type_not_allowed",
   media_too_large: "error.media_too_large",
   media_upload_failed: "error.media_upload_failed",
@@ -120,9 +119,13 @@ function ReturnedContext({
 export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const navItems = useRoleNavigation(locale, "responsible");
   const [actions, setActions] = useState<OpenAction[]>([]);
   const [selected, setSelected] = useState<OpenAction | null>(null);
   const [completedNote, setCompletedNote] = useState("");
+  const [completionTranscriptId, setCompletionTranscriptId] = useState<string | null>(null);
+  const [completionAudioMediaId, setCompletionAudioMediaId] = useState<string | null>(null);
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [registeredMediaIds, setRegisteredMediaIds] = useState<string[]>([]);
@@ -159,6 +162,8 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
     previewUrls.forEach((url) => URL.revokeObjectURL(url));
     setSelected(action);
     setCompletedNote("");
+    setCompletionTranscriptId(null);
+    setCompletionAudioMediaId(null);
     setFiles([]);
     setPreviewUrls([]);
     setRegisteredMediaIds([]);
@@ -195,6 +200,9 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
       if (!user) throw new Error("session_required");
 
       const mediaIds = [...registeredMediaIds];
+      if (completionAudioMediaId && !mediaIds.includes(completionAudioMediaId)) {
+        mediaIds.push(completionAudioMediaId);
+      }
       for (const file of files.slice(mediaIds.length)) {
         const registered = await uploadReportPhoto({
           client,
@@ -214,11 +222,16 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
         {
           completed_note: completedNote.trim() || undefined,
           media_ids: mediaIds,
+          ...(completionTranscriptId
+            ? { transcript_id: completionTranscriptId }
+            : {}),
         },
         session.access_token,
       );
       setSelected(null);
       setCompletedNote("");
+      setCompletionTranscriptId(null);
+      setCompletionAudioMediaId(null);
       setFiles([]);
       setPreviewUrls([]);
       setRegisteredMediaIds([]);
@@ -241,24 +254,6 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
       ]}
     />
   );
-  const navItems = [
-    {
-      href: `/${locale}/actions`,
-      label: t("action.nav.myWork"),
-      icon: <WrenchScrewdriverIcon className="h-5 w-5" />,
-    },
-    {
-      href: `/${locale}/learn`,
-      label: t("app.learn"),
-      icon: <BookOpenIcon className="h-5 w-5" />,
-    },
-    {
-      href: `/${locale}/profile`,
-      label: t("app.profile"),
-      icon: <IdentificationIcon className="h-5 w-5" />,
-    },
-  ];
-
   const returnedContextProps = selected
     ? {
         action: selected,
@@ -348,12 +343,19 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
             </label>
           </div>
 
-          <Field
+          <VoiceConfirmedTextarea
+            id="action-completion-note"
             label={t("work.submit.note")}
             placeholder={t("work.submit.notePlaceholder")}
             rows={4}
             value={completedNote}
-            onChange={(event) => setCompletedNote(event.target.value)}
+            locale={locale}
+            reportId={selected.id}
+            phase={mediaPhase.evidence}
+            onTranscriptIdChange={setCompletionTranscriptId}
+            onMediaIdChange={setCompletionAudioMediaId}
+            onProcessingChange={setVoiceProcessing}
+            onChange={setCompletedNote}
           />
 
           <p className="text-sm text-inkMuted">{t("work.submit.requirement")}</p>
@@ -366,7 +368,8 @@ export function ActionsPage({ requestedLocale }: { requestedLocale: string }) {
           )}
           <PrimaryButton
             label={submitting ? t("work.submit.sending") : t("work.submit.send")}
-            disabled={submitting || (!completedNote.trim() && files.length === 0)}
+            disabled={submitting || voiceProcessing
+              || (!completedNote.trim() && files.length === 0)}
             onClick={() => void submit()}
           />
         </section>

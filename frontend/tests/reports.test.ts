@@ -23,7 +23,6 @@ const input: NewReportInput = {
   level_or_zone: null,
   grid_ref: null,
   is_confidential: false,
-  input_mode: "typed",
 };
 
 describe("fileReport", () => {
@@ -53,7 +52,10 @@ describe("fileReport", () => {
       "test-token",
       {
         method: "POST",
-        body: JSON.stringify({ target: reportStatus.submitted }),
+        body: JSON.stringify({
+          target: reportStatus.submitted,
+          confirmed_text: input.description_original,
+        }),
       },
     );
   });
@@ -93,6 +95,38 @@ describe("fileReport", () => {
     );
     expect(upload.mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(apiFetch).mock.invocationCallOrder[2],
+    );
+  });
+
+  it("submits the confirmed text with its server-issued transcript id", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce({ id: "report-id" })
+      .mockResolvedValueOnce({
+        id: "report-id",
+        human_ref: "SL-2026-00001",
+        status: reportStatus.submitted,
+      });
+
+    await fileReport(
+      input,
+      "test-token",
+      undefined,
+      undefined,
+      "transcript-id",
+    );
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/reports/report-id/transition",
+      "test-token",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          target: reportStatus.submitted,
+          confirmed_text: "Loose edge protection",
+          transcript_id: "transcript-id",
+        }),
+      },
     );
   });
 
