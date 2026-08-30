@@ -62,7 +62,7 @@
   "report.new.captureTitle": "新报告",
   "report.new.questionTitle": "快速问题",
   "report.new.reviewTitle": "检查报告",
-  "report.new.step": "第 {current} 步，共 {total} 步",
+  "report.new.step": "{current} / {total}",
   "report.new.addPhoto": "添加照片",
   "report.new.changePhoto": "更换照片",
   "report.new.photoSafe": "只在安全时拍照",

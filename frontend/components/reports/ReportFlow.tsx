@@ -327,7 +327,7 @@ export function ReportFlow() {
           <ArrowLeftIcon className="h-7 w-7" />
         </button>
         <h1 className="text-center text-xl font-bold">{title}</h1>
-        <span className="text-right text-base font-bold">
+        <span className="whitespace-nowrap text-right text-base font-bold">
           {t("report.new.step", { current: stepNumber, total: 3 })}
         </span>
       </header>
