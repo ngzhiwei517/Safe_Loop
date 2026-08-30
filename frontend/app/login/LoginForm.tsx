@@ -116,11 +116,17 @@ export default function LoginForm() {
               </span>
             </label>
 
-            <label className="block">
-              <span className="text-xs font-bold uppercase tracking-wide sm:text-sm">{t("app.password")}</span>
-              <span className="mt-1.5 flex min-h-14 items-center gap-3 rounded-control border border-border bg-bg px-4 focus-within:border-primary focus-within:ring-2 focus-within:ring-primaryTint sm:mt-2 sm:min-h-16">
+            <div className="block">
+              <label
+                className="text-xs font-bold uppercase tracking-wide sm:text-sm"
+                htmlFor="login-password"
+              >
+                {t("app.password")}
+              </label>
+              <div className="mt-1.5 flex min-h-14 items-center gap-3 rounded-control border border-border bg-bg px-4 focus-within:border-primary focus-within:ring-2 focus-within:ring-primaryTint sm:mt-2 sm:min-h-16">
                 <LockClosedIcon className="h-5 w-5 shrink-0 text-inkMuted sm:h-6 sm:w-6" aria-hidden="true" />
                 <input
+                  id="login-password"
                   className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none sm:text-lg"
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
@@ -138,8 +144,8 @@ export default function LoginForm() {
                     ? <EyeSlashIcon className="h-6 w-6" aria-hidden="true" />
                     : <EyeIcon className="h-6 w-6" aria-hidden="true" />}
                 </button>
-              </span>
-            </label>
+              </div>
+            </div>
 
             {error && <p className="rounded-control bg-dangerTint p-3 font-bold text-danger" role="alert">{error}</p>}
 
