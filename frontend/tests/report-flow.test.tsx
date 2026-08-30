@@ -14,7 +14,12 @@ import { uploadReportAudio } from "../lib/media";
 import { transcribeAudio } from "../lib/transcription";
 import { reportStatus } from "../lib/stateMachine";
 
-const navigation = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn() }));
+const navigation = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  refresh: vi.fn(),
+  back: vi.fn(),
+}));
 const supabase = vi.hoisted(() => ({
   auth: {
     getSession: async () => ({
@@ -106,6 +111,8 @@ const sentAlert = {
 describe("ReportFlow", () => {
   beforeEach(() => {
     navigation.push.mockReset();
+    navigation.replace.mockReset();
+    navigation.refresh.mockReset();
     vi.mocked(createReportDraft).mockReset();
     vi.mocked(fileReport).mockReset();
     vi.mocked(uploadReportAudio).mockReset();
@@ -153,6 +160,19 @@ describe("ReportFlow", () => {
     expect(screen.getByText(en["report.new.validation.description"])).toBeTruthy();
     expect(screen.getByText(en["report.new.validation.location"])).toBeTruthy();
     expect(screen.getByRole("heading", { name: en["report.new.captureTitle"] })).toBeTruthy();
+  });
+
+  it("switches the report page and remembered locale with report language", async () => {
+    renderFlow();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(en["report.new.reportLanguage"]),
+      locales[1],
+    );
+
+    expect(document.cookie).toContain("safeloop-locale=zh-CN");
+    expect(navigation.replace).toHaveBeenCalledWith("/zh-CN/report/new");
+    expect(navigation.refresh).toHaveBeenCalledOnce();
   });
 
   it("passes the selected photo and authenticated storage client to submission", async () => {

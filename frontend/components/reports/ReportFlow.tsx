@@ -25,6 +25,7 @@ import {
   defaultLocale,
   formatDateTime,
   isLocale,
+  localeCookieName,
   locales,
   type Locale,
 } from "../../lib/locales";
@@ -114,6 +115,15 @@ export function ReportFlow() {
 
   function selectPhoto(event: ChangeEvent<HTMLInputElement>) {
     setPhoto(event.target.files?.[0] ?? null);
+  }
+
+  function switchReportLanguage(nextLocale: Locale) {
+    setLangOriginal(nextLocale);
+    document.cookie =
+      `${localeCookieName}=${encodeURIComponent(nextLocale)}; ` +
+      "Path=/; Max-Age=31536000; SameSite=Lax";
+    router.replace(`/${nextLocale}/report/new`);
+    router.refresh();
   }
 
   function reportInput(): NewReportInput {
@@ -402,7 +412,7 @@ export function ReportFlow() {
                 className="mt-1 min-h-[52px] w-full rounded-control border border-border bg-surface px-4 text-base text-ink"
                 value={langOriginal}
                 onChange={(event) =>
-                  setLangOriginal(event.target.value as Locale)
+                  switchReportLanguage(event.target.value as Locale)
                 }
               >
                 {locales.map((item) => (
