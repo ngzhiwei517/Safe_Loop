@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch, publicApiFetch } from "../lib/api";
 import {
   getPublicBriefing,
+  getQuizProgress,
   listLearningBriefings,
   submitQuizAnswer,
 } from "../lib/briefings";
@@ -21,6 +22,7 @@ describe("learning API client", () => {
     await getPublicBriefing("public token");
     await submitQuizAnswer("public token", "question-id", 2);
     await submitQuizAnswer("public token", "question-id", 1, "access-token");
+    await getQuizProgress("public token", "access-token");
     await listLearningBriefings("access-token");
 
     expect(vi.mocked(publicApiFetch).mock.calls).toEqual([
@@ -42,6 +44,9 @@ describe("learning API client", () => {
         "access-token",
       ],
     ]);
-    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith("/briefings", "access-token");
+    expect(vi.mocked(apiFetch).mock.calls).toEqual([
+      ["/briefings/public%20token/progress", "access-token"],
+      ["/briefings", "access-token"],
+    ]);
   });
 });

@@ -107,6 +107,53 @@ async def get_public_briefing(token: str) -> dict[str, object]:
     return _public_briefing_dict(row, list(questions))
 
 
+async def get_quiz_progress(token: str, actor: Actor) -> dict[str, object]:
+    """Return the signed-in worker's latest saved answer for every lesson question."""
+    profile_id = _human_id(actor)
+    async with connection() as conn:
+        briefing = await _active_briefing(conn, token.strip())
+        rows = await conn.fetch(
+            """
+            select question.id as question_id,
+                   response.id as response_id,
+                   response.selected_option,
+                   response.is_correct,
+                   question.correct_option
+            from quiz_questions question
+            left join lateral (
+              select saved.id, saved.selected_option, saved.is_correct
+              from quiz_responses saved
+              where saved.question_id = question.id
+                and saved.respondent_id = $2
+              order by saved.created_at desc, saved.id desc
+              limit 1
+            ) response on true
+            where question.briefing_id = $1
+            order by question.position
+            """,
+            briefing["id"],
+            profile_id,
+        )
+    answers = [
+        {
+            "question_id": row["question_id"],
+            "response_id": row["response_id"],
+            "selected_option": row["selected_option"],
+            "is_correct": row["is_correct"],
+            "correct_option": row["correct_option"],
+        }
+        for row in rows
+        if row["response_id"] is not None
+    ]
+    question_count = len(rows)
+    return {
+        "answers": answers,
+        "answered_count": len(answers),
+        "question_count": question_count,
+        "quiz_completed": question_count > 0 and len(answers) >= question_count,
+    }
+
+
 async def _consume_rate_limit(client_ip: str) -> None:
     try:
         await consume_rate_limit(

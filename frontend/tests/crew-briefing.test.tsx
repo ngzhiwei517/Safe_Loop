@@ -5,7 +5,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CrewBriefingPage } from "../components/learning/CrewBriefingPage";
-import { submitQuizAnswer, type PublicBriefing } from "../lib/briefings";
+import {
+  getQuizProgress,
+  submitQuizAnswer,
+  type PublicBriefing,
+} from "../lib/briefings";
 import { defaultLocale, locales } from "../lib/locales";
 import { createClient } from "../lib/supabase/browser";
 import en from "../messages/en.json";
@@ -17,7 +21,11 @@ const refresh = vi.fn();
 
 vi.mock("../lib/briefings", async (importOriginal) => {
   const original = await importOriginal<typeof import("../lib/briefings")>();
-  return { ...original, submitQuizAnswer: vi.fn() };
+  return {
+    ...original,
+    getQuizProgress: vi.fn(),
+    submitQuizAnswer: vi.fn(),
+  };
 });
 vi.mock("../lib/supabase/browser", () => ({ createClient: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -65,6 +73,13 @@ describe("CrewBriefingPage", () => {
       auth: { getSession: async () => ({ data: { session: null } }) },
     } as ReturnType<typeof createClient>);
     vi.mocked(submitQuizAnswer).mockReset();
+    vi.mocked(getQuizProgress).mockReset();
+    vi.mocked(getQuizProgress).mockResolvedValue({
+      answers: [],
+      answered_count: 0,
+      question_count: 1,
+      quiz_completed: false,
+    });
     vi.mocked(submitQuizAnswer).mockResolvedValue({
       response_id: "response-one",
       is_correct: true,
@@ -75,6 +90,9 @@ describe("CrewBriefingPage", () => {
 
   it("shows the three field-check sections and immediate server feedback", async () => {
     renderCrew();
+    expect(
+      screen.getByRole("link", { name: en["crew.back"] }).getAttribute("href"),
+    ).toBe("/en/learn");
     expect(screen.getByText(en["crew.section.whatHappened"])).toBeTruthy();
     expect(screen.getByText(en["crew.section.whyMatters"])).toBeTruthy();
     expect(screen.getByText(en["crew.section.doDifferently"])).toBeTruthy();
@@ -83,6 +101,13 @@ describe("CrewBriefingPage", () => {
 
     expect(await screen.findByText(en["crew.quiz.correct"])).toBeTruthy();
     expect(screen.getByText("Secure it before work starts.")).toBeTruthy();
+    expect(screen.getByText(en["crew.quiz.completed.title"])).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole("link", { name: en["crew.quiz.completed.back"] })
+        .at(-1)
+        ?.getAttribute("href"),
+    ).toBe("/en/learn");
     expect(submitQuizAnswer).toHaveBeenCalledWith(
       "public-token",
       "question-one",
@@ -95,6 +120,34 @@ describe("CrewBriefingPage", () => {
     renderCrew(locales[1], null);
     expect(screen.getByText(zh["crew.inactive.title"])).toBeTruthy();
     expect(screen.getByText(zh["crew.inactive.detail"])).toBeTruthy();
+  });
+
+  it("restores a signed-in worker's saved completion after reopening", async () => {
+    vi.mocked(createClient).mockReturnValue({
+      auth: {
+        getSession: async () => ({
+          data: { session: { access_token: "test-token" } },
+        }),
+      },
+    } as ReturnType<typeof createClient>);
+    vi.mocked(getQuizProgress).mockResolvedValue({
+      answers: [{
+        question_id: "question-one",
+        response_id: "saved-response",
+        selected_option: 0,
+        is_correct: true,
+        correct_option: 0,
+      }],
+      answered_count: 1,
+      question_count: 1,
+      quiz_completed: true,
+    });
+
+    renderCrew();
+
+    expect(await screen.findByText(en["crew.quiz.completed.title"])).toBeTruthy();
+    expect(getQuizProgress).toHaveBeenCalledWith("public-token", "test-token");
+    expect(screen.getByText(en["crew.quiz.correct"])).toBeTruthy();
   });
 
   it("changes a public URL and cookie without looking up an account", async () => {

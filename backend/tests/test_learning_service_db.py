@@ -18,6 +18,7 @@ from app.domain.enums import ActorType, Role
 from app.services.learning_service import (
     LearningError,
     get_public_briefing,
+    get_quiz_progress,
     list_learning_briefings,
     submit_quiz_answer,
 )
@@ -201,6 +202,25 @@ def test_quiz_records_anonymous_and_signed_in_responses() -> None:
         )
         assert anonymous["is_correct"] is True
         assert signed["is_correct"] is False
+
+        progress = run(
+            get_quiz_progress(
+                token,
+                Actor(ActorType.HUMAN, RESPONSIBLE_ID, Role.RESPONSIBLE),
+            )
+        )
+        assert progress["answered_count"] == 1
+        assert progress["question_count"] == 3
+        assert progress["quiz_completed"] is False
+        assert progress["answers"] == [
+            {
+                "question_id": questions[1],
+                "response_id": signed["response_id"],
+                "selected_option": 1,
+                "is_correct": False,
+                "correct_option": 0,
+            }
+        ]
 
         async def identities() -> list[object]:
             async with connection() as conn:
