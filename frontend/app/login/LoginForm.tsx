@@ -3,7 +3,12 @@
 import { FormEvent, useState } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/24/outline";
+import {
+  EnvelopeIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  LockClosedIcon,
+} from "@heroicons/react/24/outline";
 import { useLocale, useTranslations } from "next-intl";
 
 import { createClient } from "../../lib/supabase/browser";
@@ -125,11 +130,13 @@ export default function LoginForm() {
                 />
                 <button
                   type="button"
-                  className="min-h-11 shrink-0 px-1 font-bold text-inkMuted"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-chip text-inkMuted transition-colors hover:bg-surfaceSunken hover:text-ink"
                   aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
                   onClick={() => setShowPassword((current) => !current)}
                 >
-                  {showPassword ? t("login.hide") : t("login.show")}
+                  {showPassword
+                    ? <EyeSlashIcon className="h-6 w-6" aria-hidden="true" />
+                    : <EyeIcon className="h-6 w-6" aria-hidden="true" />}
                 </button>
               </span>
             </label>
