@@ -70,7 +70,7 @@ async function assertLocalisedSurface(page: Page): Promise<void> {
 async function login(page: Page, locale: E2ELocale, user: E2EUser): Promise<void> {
   await page.goto(`/${locale}/login`);
   await page.getByLabel(copy(locale, "app.email")).fill(user.email);
-  await page.getByLabel(copy(locale, "app.password")).fill(user.password);
+  await page.getByLabel(copy(locale, "app.password"), { exact: true }).fill(user.password);
   await page.getByRole("button", { name: copy(locale, "app.signIn") }).click();
   await expect(page).not.toHaveURL(new RegExp(`/${locale}/login(?:$|\\?)`));
 }
