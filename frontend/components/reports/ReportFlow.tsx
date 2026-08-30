@@ -25,6 +25,7 @@ import {
   defaultLocale,
   formatDateTime,
   isLocale,
+  localeCookieName,
   locales,
   type Locale,
 } from "../../lib/locales";
@@ -47,34 +48,60 @@ type FlowStep = "capture" | "question" | "urgent" | "review";
 type DangerAnswer = "yes" | "no" | null;
 type RequiredReportField = "description" | "location" | "activity";
 
+type LocaleSwitchDraft = {
+  locale: Locale;
+  description: string;
+  location: string;
+  activity: string;
+  levelOrZone: string;
+  gridRef: string;
+  detailsOpen: boolean;
+  confidential: boolean;
+  danger: DangerAnswer;
+  draftId: string | null;
+  photo: File | null;
+  transcriptId: string | null;
+  missingFields: RequiredReportField[];
+};
+
+let localeSwitchDraft: LocaleSwitchDraft | null = null;
+
 export function ReportFlow() {
   const t = useTranslations();
   const router = useRouter();
   const requestedLocale = useLocale();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
+  const restoredDraft =
+    localeSwitchDraft?.locale === locale ? localeSwitchDraft : null;
   const navItems = useReporterNavigation(locale);
   const [step, setStep] = useState<FlowStep>("capture");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(restoredDraft?.description ?? "");
   const [langOriginal, setLangOriginal] = useState<Locale>(locale);
-  const [location, setLocation] = useState("");
-  const [activity, setActivity] = useState("");
-  const [levelOrZone, setLevelOrZone] = useState("");
-  const [gridRef, setGridRef] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [confidential, setConfidential] = useState(false);
-  const [danger, setDanger] = useState<DangerAnswer>(null);
-  const [draftId, setDraftId] = useState<string | null>(null);
+  const [location, setLocation] = useState(restoredDraft?.location ?? "");
+  const [activity, setActivity] = useState(restoredDraft?.activity ?? "");
+  const [levelOrZone, setLevelOrZone] = useState(restoredDraft?.levelOrZone ?? "");
+  const [gridRef, setGridRef] = useState(restoredDraft?.gridRef ?? "");
+  const [detailsOpen, setDetailsOpen] = useState(restoredDraft?.detailsOpen ?? false);
+  const [confidential, setConfidential] = useState(restoredDraft?.confidential ?? false);
+  const [danger, setDanger] = useState<DangerAnswer>(restoredDraft?.danger ?? null);
+  const [draftId, setDraftId] = useState<string | null>(restoredDraft?.draftId ?? null);
   const [urgentAlert, setUrgentAlert] = useState<AlertItem | null>(null);
   const [alerting, setAlerting] = useState(false);
   const [alertFailed, setAlertFailed] = useState(false);
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photo, setPhoto] = useState<File | null>(restoredDraft?.photo ?? null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [transcriptId, setTranscriptId] = useState<string | null>(null);
+  const [transcriptId, setTranscriptId] = useState<string | null>(restoredDraft?.transcriptId ?? null);
   const [voiceProcessing, setVoiceProcessing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [missingFields, setMissingFields] = useState<RequiredReportField[]>([]);
+  const [missingFields, setMissingFields] = useState<RequiredReportField[]>(
+    restoredDraft?.missingFields ?? [],
+  );
   const urgentAlertId = urgentAlert?.id;
+
+  useEffect(() => {
+    if (localeSwitchDraft?.locale === locale) localeSwitchDraft = null;
+  }, [locale]);
 
   useEffect(() => {
     if (!photo) {
@@ -114,6 +141,29 @@ export function ReportFlow() {
 
   function selectPhoto(event: ChangeEvent<HTMLInputElement>) {
     setPhoto(event.target.files?.[0] ?? null);
+  }
+
+  function switchReportLanguage(nextLocale: Locale) {
+    localeSwitchDraft = {
+      locale: nextLocale,
+      description,
+      location,
+      activity,
+      levelOrZone,
+      gridRef,
+      detailsOpen,
+      confidential,
+      danger,
+      draftId,
+      photo,
+      transcriptId,
+      missingFields,
+    };
+    document.cookie =
+      `${localeCookieName}=${encodeURIComponent(nextLocale)}; ` +
+      "Path=/; Max-Age=31536000; SameSite=Lax";
+    router.replace(`/${nextLocale}/report/new`);
+    router.refresh();
   }
 
   function reportInput(): NewReportInput {
@@ -317,7 +367,7 @@ export function ReportFlow() {
           <ArrowLeftIcon className="h-7 w-7" />
         </button>
         <h1 className="text-center text-xl font-bold">{title}</h1>
-        <span className="text-right text-base font-bold">
+        <span className="whitespace-nowrap text-right text-base font-bold">
           {t("report.new.step", { current: stepNumber, total: 3 })}
         </span>
       </header>
@@ -402,7 +452,7 @@ export function ReportFlow() {
                 className="mt-1 min-h-[52px] w-full rounded-control border border-border bg-surface px-4 text-base text-ink"
                 value={langOriginal}
                 onChange={(event) =>
-                  setLangOriginal(event.target.value as Locale)
+                  switchReportLanguage(event.target.value as Locale)
                 }
               >
                 {locales.map((item) => (

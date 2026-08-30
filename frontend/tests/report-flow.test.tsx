@@ -14,7 +14,12 @@ import { uploadReportAudio } from "../lib/media";
 import { transcribeAudio } from "../lib/transcription";
 import { reportStatus } from "../lib/stateMachine";
 
-const navigation = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn() }));
+const navigation = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  refresh: vi.fn(),
+  back: vi.fn(),
+}));
 const supabase = vi.hoisted(() => ({
   auth: {
     getSession: async () => ({
@@ -106,6 +111,8 @@ const sentAlert = {
 describe("ReportFlow", () => {
   beforeEach(() => {
     navigation.push.mockReset();
+    navigation.replace.mockReset();
+    navigation.refresh.mockReset();
     vi.mocked(createReportDraft).mockReset();
     vi.mocked(fileReport).mockReset();
     vi.mocked(uploadReportAudio).mockReset();
@@ -153,6 +160,47 @@ describe("ReportFlow", () => {
     expect(screen.getByText(en["report.new.validation.description"])).toBeTruthy();
     expect(screen.getByText(en["report.new.validation.location"])).toBeTruthy();
     expect(screen.getByRole("heading", { name: en["report.new.captureTitle"] })).toBeTruthy();
+  });
+
+  it("switches the report page and remembered locale with report language", async () => {
+    const view = renderFlow();
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])),
+      "Keep this description",
+    );
+    await user.type(
+      screen.getByLabelText(requiredLabel(en["report.new.location"])),
+      "Level 8",
+    );
+
+    await user.selectOptions(
+      screen.getByLabelText(en["report.new.reportLanguage"]),
+      locales[1],
+    );
+
+    expect(document.cookie).toContain("safeloop-locale=zh-CN");
+    expect(navigation.replace).toHaveBeenCalledWith("/zh-CN/report/new");
+    expect(navigation.refresh).toHaveBeenCalledOnce();
+
+    view.unmount();
+    renderFlow(locales[1]);
+    expect(
+      (screen.getByLabelText(
+        zh["report.new.requiredLabel"].replace(
+          "{label}",
+          zh["report.new.whatHappened"],
+        ),
+      ) as HTMLTextAreaElement).value,
+    ).toBe("Keep this description");
+    expect(
+      (screen.getByLabelText(
+        zh["report.new.requiredLabel"].replace(
+          "{label}",
+          zh["report.new.location"],
+        ),
+      ) as HTMLInputElement).value,
+    ).toBe("Level 8");
   });
 
   it("passes the selected photo and authenticated storage client to submission", async () => {

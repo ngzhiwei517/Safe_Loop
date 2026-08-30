@@ -1,14 +1,16 @@
 "use client";
 
 import {
-  BookOpenIcon,
+  ArrowLeftIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/24/outline";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
+  getQuizProgress,
   submitQuizAnswer,
   type PublicBriefing,
   type QuizAnswerResult,
@@ -56,6 +58,42 @@ export function CrewBriefingPage({
     "crew.section.whyMatters",
     "crew.section.doDifferently",
   ] as const;
+  const quizCompleted = Boolean(
+    briefing
+    && briefing.quiz_questions.length > 0
+    && briefing.quiz_questions.every((question) => answers[question.id]),
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadProgress() {
+      try {
+        const { data: { session } } = await createClient().auth.getSession();
+        if (!session) return;
+        const progress = await getQuizProgress(token, session.access_token);
+        if (!active) return;
+        setAnswers(Object.fromEntries(
+          progress.answers.map((saved) => [
+            saved.question_id,
+            {
+              response_id: saved.response_id,
+              is_correct: saved.is_correct,
+              correct_option: saved.correct_option,
+              selectedOption: saved.selected_option,
+            },
+          ]),
+        ));
+      } catch {
+        // A progress refresh must never stop someone from reading or answering.
+      }
+    }
+
+    void loadProgress();
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   async function answer(questionId: string, selectedOption: number) {
     if (answers[questionId] || pendingQuestion) return;
@@ -90,9 +128,13 @@ export function CrewBriefingPage({
   return (
     <div className="mx-auto min-h-screen max-w-[430px] bg-bg">
       <header className="flex items-center gap-3 border-b border-border px-5 py-4">
-        <span className="grid h-11 w-11 place-items-center rounded-control bg-primaryTint text-primary">
-          <BookOpenIcon className="h-6 w-6" />
-        </span>
+        <Link
+          aria-label={t("crew.back")}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-control border border-border bg-surface text-ink"
+          href={`/${locale}/learn`}
+        >
+          <ArrowLeftIcon className="h-6 w-6" />
+        </Link>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold uppercase tracking-wide text-inkMuted">
             {t("crew.kicker")}
@@ -234,6 +276,25 @@ export function CrewBriefingPage({
                 <p className="rounded-control bg-dangerTint p-4 text-base font-bold text-danger" role="alert">
                   {t(failureKey)}
                 </p>
+              )}
+              {quizCompleted && (
+                <Card className="space-y-3 border-success bg-successTint" role="status">
+                  <div className="flex items-center gap-2">
+                    <CheckCircleIcon className="h-7 w-7 text-successStrong" />
+                    <h2 className="text-xl font-bold text-successStrong">
+                      {t("crew.quiz.completed.title")}
+                    </h2>
+                  </div>
+                  <p className="text-base leading-6 text-ink">
+                    {t("crew.quiz.completed.detail")}
+                  </p>
+                  <Link
+                    className="flex min-h-11 items-center justify-center rounded-control bg-ink px-4 text-base font-bold text-ink-inverse"
+                    href={`/${locale}/learn`}
+                  >
+                    {t("crew.quiz.completed.back")}
+                  </Link>
+                </Card>
               )}
             </section>
           </>

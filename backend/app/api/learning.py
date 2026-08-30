@@ -13,6 +13,7 @@ from app.api.deps import current_actor, optional_actor
 from app.services.learning_service import (
     LearningError,
     get_public_briefing,
+    get_quiz_progress,
     list_learning_briefings,
     submit_quiz_answer,
 )
@@ -66,6 +67,19 @@ async def get_briefing_by_token(token: str) -> dict[str, object]:
     except LearningError as error:
         raise learning_error(error) from error
     return cast(dict[str, object], jsonable_encoder(row))
+
+
+@router.get("/{token}/progress")
+async def get_briefing_quiz_progress(
+    token: str,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Return durable quiz progress for one signed-in lesson viewer."""
+    try:
+        result = await get_quiz_progress(token, actor)
+    except LearningError as error:
+        raise learning_error(error) from error
+    return cast(dict[str, object], jsonable_encoder(result))
 
 
 @router.post("/{token}/quiz")

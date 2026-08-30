@@ -81,6 +81,16 @@ export type QuizAnswerResult = {
   correct_option: number;
 };
 
+export type QuizProgress = {
+  answers: Array<QuizAnswerResult & {
+    question_id: string;
+    selected_option: number;
+  }>;
+  answered_count: number;
+  question_count: number;
+  quiz_completed: boolean;
+};
+
 export type LearningBriefing = Omit<PublicBriefing, "quiz_questions"> & {
   qr_token: string;
   target_match: boolean;
@@ -136,6 +146,16 @@ export function submitQuizAnswer(
       method: "POST",
       body: JSON.stringify({ question_id: questionId, selected_option: selectedOption }),
     },
+    accessToken,
+  );
+}
+
+export function getQuizProgress(
+  token: string,
+  accessToken: string,
+): Promise<QuizProgress> {
+  return apiFetch<QuizProgress>(
+    `/briefings/${encodeURIComponent(token)}/progress`,
     accessToken,
   );
 }
